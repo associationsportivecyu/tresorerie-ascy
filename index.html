@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Trésorerie AS CY</title>
+<link rel="icon" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap">
+<style>
+  :root {
+    --bleu: #1f5ee6;
+    --marine: #17246b;
+    --jaune: #f5c518;
+    --vert: #0f8a57;
+    --rouge: #c9382a;
+    --fond: #f2f4fb;
+    --carte: #ffffff;
+    --texte: #18203f;
+    --doux: #5c6688;
+    --trait: #dfe3f1;
+    --f: "Montserrat", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font-family: var(--f); font-size: 15px; line-height: 1.45; font-weight: 500; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--jaune); outline-offset: 2px; }
+  h1, h2 { margin: 0; line-height: 1.2; }
+
+  .connexion { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: linear-gradient(160deg, var(--bleu), var(--marine)); }
+  .connexion-carte { width: min(100%, 400px); background: var(--carte); border-radius: 18px; padding: 32px 24px; text-align: center; }
+  .connexion-carte img { height: 96px; }
+  .connexion-carte h1 { font-size: 24px; font-weight: 800; margin-top: 12px; color: var(--marine); }
+  .connexion-carte p { color: var(--doux); margin: 8px 0 22px; }
+  #bouton-google { display: flex; justify-content: center; min-height: 44px; }
+  .message-connexion { color: var(--rouge) !important; margin: 16px 0 0 !important; font-weight: 600; }
+
+  header { background: var(--marine); color: #fff; }
+  .entete { max-width: 860px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+  .entete img { height: 44px; }
+  .entete h1 { font-size: 18px; font-weight: 800; }
+  .entete small { display: block; color: #c9d4ff; font-size: 13px; }
+  .entete .fin { margin-left: auto; }
+  .lien-clair { background: none; border: 1px solid #6c79c4; color: #fff; border-radius: 8px; padding: 7px 11px; font-size: 13px; font-weight: 600; }
+  nav { max-width: 860px; margin: 0 auto; padding: 0 16px; display: flex; gap: 6px; }
+  nav button { background: none; border: 0; border-bottom: 3px solid transparent; color: #c9d4ff; padding: 8px 10px; font-weight: 700; }
+  nav button[aria-current="page"] { color: #fff; border-color: var(--jaune); }
+
+  main { max-width: 860px; margin: 0 auto; padding: 16px 16px 96px; }
+  .tuiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .tuile { background: var(--carte); border: 1px solid var(--trait); border-radius: 12px; padding: 12px; min-width: 0; }
+  .tuile span { display: block; color: var(--doux); font-size: 12.5px; font-weight: 600; }
+  .tuile strong { display: block; font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .tuile.solde { grid-column: 1 / -1; background: var(--marine); border-color: var(--marine); color: #fff; }
+  .tuile.solde span { color: #c9d4ff; }
+  .tuile.solde strong { font-size: 28px; }
+  .tuiles .deux { grid-column: span 3; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .filtres { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px; margin: 16px 0 12px; }
+  input, select { width: 100%; min-height: 44px; padding: 9px 11px; background: #fff; border: 1px solid #b9c0d8; border-radius: 9px; }
+  .secondaire { min-height: 44px; padding: 9px 13px; background: #fff; border: 1px solid #b9c0d8; border-radius: 9px; font-weight: 700; color: var(--marine); }
+  .principal { min-height: 46px; padding: 10px 18px; background: var(--bleu); border: 0; border-radius: 10px; font-weight: 800; color: #fff; }
+  .principal:disabled { opacity: .6; cursor: default; }
+  .danger { color: var(--rouge); border-color: #e5b5ae; }
+
+  .saisie { background: var(--carte); border: 1px solid var(--trait); border-radius: 12px; padding: 13px 14px; margin-bottom: 9px; }
+  .saisie-haut { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .saisie h2 { font-size: 15.5px; font-weight: 700; overflow-wrap: anywhere; }
+  .montant { font-weight: 800; font-size: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .recette { color: var(--vert); }
+  .depense { color: var(--rouge); }
+  .infos { color: var(--doux); font-size: 13px; margin-top: 2px; }
+  .auteur { font-size: 13px; font-weight: 600; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--trait); }
+  .auteur em { display: block; font-style: normal; font-weight: 500; color: var(--doux); }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .actions button { min-height: 38px; padding: 5px 11px; font-size: 13px; }
+  .vide { text-align: center; color: var(--doux); padding: 34px 16px; }
+  .erreur { color: var(--rouge); font-weight: 600; }
+
+  .ajouter { position: fixed; right: max(16px, calc(50vw - 414px)); bottom: 18px; box-shadow: 0 6px 20px rgba(23, 36, 107, .35); }
+
+  dialog { width: min(calc(100vw - 24px), 500px); max-height: calc(100dvh - 24px); border: 0; border-radius: 16px; padding: 20px; color: var(--texte); }
+  dialog::backdrop { background: rgba(15, 22, 60, .6); }
+  dialog h2 { font-size: 19px; font-weight: 800; color: var(--marine); margin-bottom: 12px; }
+  label { display: block; font-size: 13.5px; font-weight: 700; margin-bottom: 11px; }
+  label input, label select { margin-top: 4px; font-weight: 500; }
+  .aide { display: block; color: var(--doux); font-weight: 500; font-size: 12.5px; margin-top: 3px; }
+  .bascule { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border: 0; padding: 0; margin: 0 0 12px; }
+  .bascule legend { position: absolute; width: 1px; height: 1px; overflow: hidden; }
+  .bascule label { margin: 0; }
+  .bascule input { position: absolute; opacity: 0; width: 1px; min-height: 0; }
+  .bascule span { display: block; text-align: center; padding: 11px; border: 1px solid #b9c0d8; border-radius: 9px; font-size: 15px; }
+  .bascule input:checked + span { background: var(--marine); border-color: var(--marine); color: #fff; }
+  .bascule input:focus-visible + span { outline: 3px solid var(--jaune); outline-offset: 2px; }
+  .pied { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+  #apercu { display: block; max-width: 100%; max-height: 70dvh; margin: 0 auto 12px; }
+
+  .acces { display: grid; grid-template-columns: 1fr 130px auto; gap: 8px 12px; align-items: center; background: var(--carte); border: 1px solid var(--trait); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
+  .acces strong { display: block; }
+  .acces small { color: var(--doux); overflow-wrap: anywhere; }
+  .form-acces { display: grid; grid-template-columns: 1.3fr 1fr auto auto; gap: 8px; align-items: end; background: var(--carte); border: 1px solid var(--trait); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+  .form-acces label { margin: 0; }
+  .ligne-histo { background: var(--carte); border: 1px solid var(--trait); border-radius: 10px; padding: 9px 12px; margin-bottom: 6px; font-size: 13.5px; overflow-wrap: anywhere; }
+  .ligne-histo small { display: block; color: var(--doux); }
+
+  @media (max-width: 620px) {
+    .filtres { grid-template-columns: 1fr 1fr; }
+    .filtres .recherche { grid-column: 1 / -1; }
+    .filtres .secondaire { grid-column: 1 / -1; }
+    .form-acces { grid-template-columns: 1fr; }
+    .acces { grid-template-columns: 1fr 130px; }
+    .acces button { grid-column: 1 / -1; }
+    .ajouter { left: 16px; right: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<section class="connexion" id="ecran-connexion" hidden>
+  <div class="connexion-carte">
+    <img src="logo.png" alt="Logo de l'AS CY">
+    <h1>Trésorerie AS CY</h1>
+    <p>Connecte-toi avec ton compte Google autorisé.</p>
+    <div id="bouton-google"></div>
+    <p class="message-connexion" id="message-connexion" role="alert" hidden></p>
+  </div>
+</section>
+
+<div id="ecran-app" hidden>
+  <header>
+    <div class="entete">
+      <img src="logo.png" alt="">
+      <div>
+        <h1>Trésorerie AS CY</h1>
+        <small id="bonjour"></small>
+      </div>
+      <button class="lien-clair fin" id="btn-deconnexion">Déconnexion</button>
+    </div>
+    <nav id="navigation" aria-label="Sections">
+      <button data-vue="saisies" aria-current="page">Saisies</button>
+      <button data-vue="acces" class="admin" hidden>Accès</button>
+      <button data-vue="historique" class="admin" hidden>Historique</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="vue-saisies">
+      <div class="tuiles">
+        <div class="tuile solde"><span>Solde actuel</span><strong id="solde">–</strong></div>
+        <div class="deux">
+          <div class="tuile"><span id="titre-recettes">Recettes</span><strong class="recette" id="recettes">–</strong></div>
+          <div class="tuile"><span id="titre-depenses">Dépenses</span><strong class="depense" id="depenses">–</strong></div>
+        </div>
+      </div>
+      <div class="filtres">
+        <input class="recherche" id="recherche" type="search" placeholder="Rechercher…" aria-label="Rechercher une saisie">
+        <select id="filtre-type" aria-label="Filtrer par type">
+          <option value="">Tout</option>
+          <option value="recette">Recettes</option>
+          <option value="depense">Dépenses</option>
+        </select>
+        <select id="filtre-mois" aria-label="Filtrer par mois"></select>
+        <button class="secondaire" id="btn-export">Exporter</button>
+      </div>
+      <div id="liste" aria-live="polite"><p class="vide">Chargement des saisies…</p></div>
+      <button class="principal ajouter" id="btn-ajouter">+ Nouvelle saisie</button>
+    </section>
+
+    <section id="vue-acces" hidden>
+      <form class="form-acces" id="form-acces">
+        <label>E-mail Google<input name="email" type="email" required autocomplete="off"></label>
+        <label>Nom affiché<input name="nom" required maxlength="60" autocomplete="off"></label>
+        <label>Rôle
+          <select name="role"><option value="membre">Membre</option><option value="admin">Admin</option></select>
+        </label>
+        <button class="principal">Ajouter</button>
+      </form>
+      <p class="erreur" id="erreur-acces" role="alert" hidden></p>
+      <div id="liste-acces"></div>
+    </section>
+
+    <section id="vue-historique" hidden>
+      <div id="liste-historique"></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg-saisie">
+  <form id="form-saisie" novalidate>
+    <h2 id="titre-saisie">Nouvelle saisie</h2>
+    <fieldset class="bascule">
+      <legend>Type</legend>
+      <label><input type="radio" name="type" value="depense" checked><span>Dépense</span></label>
+      <label><input type="radio" name="type" value="recette"><span>Recette</span></label>
+    </fieldset>
+    <label>Montant (€)<input name="montant" inputmode="decimal" autocomplete="off" placeholder="0,00" required></label>
+    <label>Date<input name="date" type="date" required></label>
+    <label>Catégorie<select name="categorie" required></select></label>
+    <label>Description<input name="description" maxlength="200" autocomplete="off" required></label>
+    <label>Moyen de paiement<select name="moyen" required></select></label>
+    <label>Justificatif
+      <input name="fichier" type="file" accept="image/*,application/pdf">
+      <span class="aide" id="aide-fichier">Photo du ticket ou de la facture, ou PDF (5 Mo maximum).</span>
+    </label>
+    <p class="erreur" id="erreur-saisie" role="alert" hidden></p>
+    <div class="pied">
+      <button type="button" class="secondaire" id="btn-annuler">Annuler</button>
+      <button class="principal" id="btn-enregistrer">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-justificatif">
+  <h2>Justificatif</h2>
+  <p class="vide" id="chargement-justif">Chargement…</p>
+  <img id="apercu" alt="Justificatif de la saisie" hidden>
+  <div class="pied">
+    <a class="secondaire" id="lien-justif" target="_blank" rel="noopener" hidden style="text-decoration:none;display:inline-flex;align-items:center">Ouvrir le fichier</a>
+    <button class="principal" id="btn-fermer-justif">Fermer</button>
+  </div>
+</dialog>
+
+<script>
+  // ====== À PERSONNALISER ======
+  const API_URL = 'https://script.google.com/macros/s/AKfycbzQzbtQkUjHqRe1zGOENDeGy_nkmEK7huP9hdZ1f5XrDmSZ1AsqSrIN3WVjIzOlQ56rbQ/exec';
+  const CLIENT_ID = '488844381032-9c0kj0u2duis6ur18v3433lg06hpskb2.apps.googleusercontent.com';
+  // =============================
+
+  const CLE_SESSION = 'tresorerie-session';
+  const RAFRAICHISSEMENT = 60000;
+  const TAILLE_MAX_FICHIER = 5 * 1024 * 1024;
+  const COTE_MAX_PHOTO = 1600;
+
+  const $ = id => document.getElementById(id);
+  const euros = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+  const etat = { session: lireSession(), moi: null, saisies: [], categories: {}, moyens: [], enEdition: null };
+
+  function lireSession() {
+    try { return localStorage.getItem(CLE_SESSION); } catch (e) { return null; }
+  }
+  function ecrireSession(valeur) {
+    etat.session = valeur;
+    try {
+      if (valeur) localStorage.setItem(CLE_SESSION, valeur);
+      else localStorage.removeItem(CLE_SESSION);
+    } catch (e) { /* la session dure alors le temps de la page */ }
+  }
+
+  function el(balise, proprietes, ...enfants) {
+    const noeud = document.createElement(balise);
+    Object.assign(noeud, proprietes);
+    noeud.append(...enfants.filter(e => e !== null && e !== undefined));
+    return noeud;
+  }
+
+  async function api(action, donnees) {
+    const reponse = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // évite la requête préalable refusée par Apps Script
+      body: JSON.stringify({ action, session: etat.session, ...donnees })
+    });
+    const r = await reponse.json();
+    if (r.expiree) {
+      afficherConnexion('Ta session a expiré. Reconnecte-toi.');
+      throw new Error(r.erreur);
+    }
+    if (!r.ok) throw new Error(r.erreur);
+    return r;
+  }
+
+  // ====== Connexion ======
+
+  function afficherConnexion(message) {
+    ecrireSession(null);
+    clearInterval(etat.minuteur);
+    $('ecran-app').hidden = true;
+    $('ecran-connexion').hidden = false;
+    $('message-connexion').textContent = message || '';
+    $('message-connexion').hidden = !message;
+    preparerGoogle();
+  }
+
+  function preparerGoogle() {
+    if (!window.google || !google.accounts) { setTimeout(preparerGoogle, 150); return; }
+    google.accounts.id.initialize({ client_id: CLIENT_ID, callback: surConnexionGoogle });
+    google.accounts.id.renderButton($('bouton-google'), { theme: 'filled_blue', size: 'large', text: 'signin_with', locale: 'fr' });
+  }
+
+  async function surConnexionGoogle(reponse) {
+    $('message-connexion').hidden = true;
+    try {
+      const r = await api('connexion', { credential: reponse.credential });
+      ecrireSession(r.session);
+      await demarrer();
+    } catch (err) {
+      afficherConnexion(err.message);
+    }
+  }
+
+  async function demarrer() {
+    await charger();
+    $('ecran-connexion').hidden = true;
+    $('ecran-app').hidden = false;
+    clearInterval(etat.minuteur);
+    etat.minuteur = setInterval(rafraichir, RAFRAICHISSEMENT);
+  }
+
+  /** Fait apparaître les saisies des autres, sans déranger une saisie en cours. */
+  function rafraichir() {
+    if (document.hidden || !etat.session || !$('ecran-app').checkVisibility() || $('dlg-saisie').open) return;
+    charger().catch(() => {});
+  }
+
+  async function charger() {
+    const r = await api('liste');
+    etat.moi = r.moi;
+    etat.saisies = r.saisies;
+    etat.categories = r.categories;
+    etat.moyens = r.moyens;
+    $('bonjour').textContent = 'Connecté(e) : ' + r.moi.nom;
+    document.querySelectorAll('nav .admin').forEach(b => { b.hidden = r.moi.role !== 'admin'; });
+    remplirMois();
+    afficherListe();
+  }
+
+  // ====== Liste ======
+
+  const centimes = m => Math.round(m * 100);
+  const signe = s => (s.type === 'recette' ? 1 : -1);
+  const total = (liste, type) => liste.filter(s => s.type === type).reduce((t, s) => t + centimes(s.montant), 0) / 100;
+  const dateCourte = d => d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4);
+  const horodatage = iso => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).replace(' ', ' à ');
+  const nomMois = m => new Date(m + '-15').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+  function remplirMois() {
+    const choix = $('filtre-mois');
+    const valeur = choix.value;
+    const mois = [...new Set(etat.saisies.map(s => s.date.slice(0, 7)))].sort().reverse();
+    choix.replaceChildren(el('option', { value: '', textContent: 'Tous les mois' }),
+      ...mois.map(m => el('option', { value: m, textContent: nomMois(m) })));
+    if (mois.includes(valeur)) choix.value = valeur;
+  }
+
+  function saisiesFiltrees() {
+    const q = $('recherche').value.trim().toLowerCase();
+    const type = $('filtre-type').value;
+    const mois = $('filtre-mois').value;
+    return etat.saisies
+      .filter(s => !type || s.type === type)
+      .filter(s => !mois || s.date.startsWith(mois))
+      .filter(s => !q || [s.description, s.categorie, s.auteur, s.moyen].join(' ').toLowerCase().includes(q))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.creee.localeCompare(a.creee));
+  }
+
+  function afficherListe() {
+    const liste = saisiesFiltrees();
+    const filtre = $('recherche').value || $('filtre-type').value || $('filtre-mois').value;
+    $('solde').textContent = euros.format(total(etat.saisies, 'recette') - total(etat.saisies, 'depense'));
+    $('recettes').textContent = euros.format(total(liste, 'recette'));
+    $('depenses').textContent = euros.format(total(liste, 'depense'));
+    $('titre-recettes').textContent = filtre ? 'Recettes (filtre)' : 'Recettes';
+    $('titre-depenses').textContent = filtre ? 'Dépenses (filtre)' : 'Dépenses';
+
+    if (!liste.length) {
+      $('liste').replaceChildren(el('p', { className: 'vide', textContent:
+        etat.saisies.length ? 'Aucune saisie ne correspond à ta recherche.' : 'Aucune saisie pour le moment. Ajoute la première !' }));
+      return;
+    }
+    $('liste').replaceChildren(...liste.map(carteSaisie));
+  }
+
+  function carteSaisie(s) {
+    const actions = [];
+    if (s.justificatif) actions.push(el('button', { className: 'secondaire', textContent: 'Voir le justificatif', onclick: () => voirJustificatif(s) }));
+    if (s.modifiable) {
+      actions.push(el('button', { className: 'secondaire', textContent: 'Modifier', onclick: () => ouvrirSaisie(s) }));
+      actions.push(el('button', { className: 'secondaire danger', textContent: 'Supprimer', onclick: () => supprimer(s) }));
+    }
+    return el('article', { className: 'saisie' },
+      el('div', { className: 'saisie-haut' },
+        el('h2', { textContent: s.description }),
+        el('span', { className: 'montant ' + s.type, textContent: (s.type === 'recette' ? '+' : '−') + euros.format(s.montant) })),
+      el('div', { className: 'infos', textContent: [dateCourte(s.date), s.categorie, s.moyen].join(' · ') }),
+      el('div', { className: 'auteur' },
+        s.auteur + ' a effectué cette saisie le ' + horodatage(s.creee),
+        s.modifiee ? el('em', { textContent: 'Modifiée par ' + s.modifieePar + ' le ' + horodatage(s.modifiee) }) : null),
+      actions.length ? el('div', { className: 'actions' }, ...actions) : null);
+  }
+
+  // ====== Ajout et modification ======
+
+  function remplirCategories(selection) {
+    const type = $('form-saisie').elements.type.value;
+    $('form-saisie').elements.categorie.replaceChildren(el('option', { value: '', textContent: 'Choisir…' }),
+      ...etat.categories[type].map(c => el('option', { value: c, textContent: c })));
+    $('form-saisie').elements.categorie.value = selection || '';
+  }
+
+  function aujourdhui() {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+
+  function ouvrirSaisie(saisie) {
+    const f = $('form-saisie');
+    f.reset();
+    etat.enEdition = saisie || null;
+    $('titre-saisie').textContent = saisie ? 'Modifier la saisie' : 'Nouvelle saisie';
+    $('erreur-saisie').hidden = true;
+    $('aide-fichier').textContent = saisie && saisie.justificatif
+      ? 'Un justificatif est déjà joint. Choisis un fichier seulement pour le remplacer.'
+      : 'Photo du ticket ou de la facture, ou PDF (5 Mo maximum).';
+    f.elements.moyen.replaceChildren(el('option', { value: '', textContent: 'Choisir…' }),
+      ...etat.moyens.map(m => el('option', { value: m, textContent: m })));
+    if (saisie) {
+      f.elements.type.value = saisie.type;
+      f.elements.montant.value = String(saisie.montant).replace('.', ',');
+      f.elements.date.value = saisie.date;
+      f.elements.description.value = saisie.description;
+      f.elements.moyen.value = saisie.moyen;
+    } else {
+      f.elements.date.value = aujourdhui();
+    }
+    remplirCategories(saisie && saisie.categorie);
+    $('dlg-saisie').showModal();
+  }
+
+  function lireBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const lecteur = new FileReader();
+      lecteur.onload = () => resolve(lecteur.result.split(',')[1]);
+      lecteur.onerror = () => reject(new Error('Impossible de lire le fichier.'));
+      lecteur.readAsDataURL(blob);
+    });
+  }
+
+  /** Réduit les photos du téléphone pour que l'envoi reste rapide. */
+  async function reduirePhoto(fichier) {
+    const image = await createImageBitmap(fichier);
+    const echelle = Math.min(1, COTE_MAX_PHOTO / Math.max(image.width, image.height));
+    const canvas = el('canvas', { width: Math.round(image.width * echelle), height: Math.round(image.height * echelle) });
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+  }
+
+  async function preparerFichier(fichier) {
+    if (!fichier) return null;
+    let contenu = fichier;
+    if (fichier.type.startsWith('image/')) {
+      try {
+        contenu = await reduirePhoto(fichier);
+      } catch (e) {
+        throw new Error('Cette image n\'est pas lisible. Envoie une photo en JPEG ou PNG, ou un PDF.');
+      }
+    }
+    if (contenu.size > TAILLE_MAX_FICHIER) throw new Error('Le justificatif dépasse 5 Mo.');
+    return { type: contenu.type, donnees: await lireBase64(contenu) };
+  }
+
+  async function enregistrer(evenement) {
+    evenement.preventDefault();
+    const f = evenement.target.elements;
+    const bouton = $('btn-enregistrer');
+    $('erreur-saisie').hidden = true;
+    bouton.disabled = true;
+    bouton.textContent = 'Enregistrement…';
+    try {
+      const saisie = {
+        type: f.type.value,
+        montant: f.montant.value.replace(/\s/g, '').replace(',', '.'),
+        date: f.date.value,
+        categorie: f.categorie.value,
+        description: f.description.value,
+        moyen: f.moyen.value
+      };
+      const fichier = await preparerFichier(f.fichier.files[0]);
+      if (etat.enEdition) await api('modifier', { id: etat.enEdition.id, saisie, fichier });
+      else await api('ajouter', { saisie, fichier });
+      $('dlg-saisie').close();
+      await charger();
+    } catch (err) {
+      $('erreur-saisie').textContent = err.message;
+      $('erreur-saisie').hidden = false;
+    } finally {
+      bouton.disabled = false;
+      bouton.textContent = 'Enregistrer';
+    }
+  }
+
+  async function supprimer(s) {
+    if (!confirm('Supprimer « ' + s.description + ' » (' + euros.format(s.montant) + ') ?')) return;
+    try {
+      await api('supprimer', { id: s.id });
+      await charger();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function voirJustificatif(s) {
+    const apercu = $('apercu');
+    const lien = $('lien-justif');
+    apercu.hidden = true;
+    lien.hidden = true;
+    $('chargement-justif').textContent = 'Chargement…';
+    $('chargement-justif').hidden = false;
+    $('dlg-justificatif').showModal();
+    try {
+      const r = await api('justificatif', { id: s.id });
+      const octets = Uint8Array.from(atob(r.donnees), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([octets], { type: r.type }));
+      lien.href = url;
+      lien.hidden = false;
+      if (r.type.startsWith('image/')) {
+        apercu.src = url;
+        apercu.hidden = false;
+      }
+      $('chargement-justif').hidden = true;
+    } catch (err) {
+      $('chargement-justif').textContent = err.message;
+    }
+  }
+
+  function exporter() {
+    const cellule = v => {
+      const texte = String(v).replace(/^([=+@-])/, "'$1");
+      return '"' + texte.replace(/"/g, '""') + '"';
+    };
+    const lignes = saisiesFiltrees().map(s => [s.date, s.type === 'recette' ? 'Recette' : 'Dépense',
+      (signe(s) * s.montant).toFixed(2).replace('.', ','), s.categorie, s.description, s.moyen, s.auteur].map(cellule).join(';'));
+    const entetes = ['Date', 'Type', 'Montant', 'Catégorie', 'Description', 'Moyen de paiement', 'Saisi par'].map(cellule).join(';');
+    const lien = el('a', {
+      href: URL.createObjectURL(new Blob(['﻿' + [entetes, ...lignes].join('\r\n')], { type: 'text/csv;charset=utf-8' })),
+      download: 'tresorerie-as-cy-' + aujourdhui() + '.csv'
+    });
+    lien.click();
+    URL.revokeObjectURL(lien.href);
+  }
+
+  // ====== Administration ======
+
+  function changerVue(vue) {
+    ['saisies', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
+    document.querySelectorAll('nav button').forEach(b => {
+      if (b.dataset.vue === vue) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    });
+    if (vue === 'acces') chargerAcces();
+    if (vue === 'historique') chargerHistorique();
+  }
+
+  function erreurAcces(message) {
+    $('erreur-acces').textContent = message || '';
+    $('erreur-acces').hidden = !message;
+  }
+
+  async function chargerAcces() {
+    erreurAcces();
+    try {
+      afficherAcces((await api('acces')).acces);
+    } catch (err) {
+      erreurAcces(err.message);
+    }
+  }
+
+  function afficherAcces(acces) {
+    $('liste-acces').replaceChildren(...acces.map(a => {
+      const role = el('select', { 'ariaLabel': 'Rôle de ' + a.nom },
+        el('option', { value: 'membre', textContent: 'Membre' }),
+        el('option', { value: 'admin', textContent: 'Admin' }));
+      role.value = a.role;
+      role.onchange = () => enregistrerAcces({ ...a, role: role.value });
+      return el('div', { className: 'acces' },
+        el('div', {}, el('strong', { textContent: a.nom + (a.actif ? '' : ' (accès retiré)') }), el('small', { textContent: a.email })),
+        role,
+        el('button', {
+          className: 'secondaire' + (a.actif ? ' danger' : ''),
+          textContent: a.actif ? 'Retirer l\'accès' : 'Rétablir l\'accès',
+          onclick: () => enregistrerAcces({ ...a, actif: !a.actif })
+        }));
+    }));
+  }
+
+  async function enregistrerAcces(acces) {
+    erreurAcces();
+    try {
+      afficherAcces((await api('accesEnregistrer', { acces })).acces);
+      return true;
+    } catch (err) {
+      erreurAcces(err.message);
+      chargerAcces().catch(() => {});
+      return false;
+    }
+  }
+
+  async function chargerHistorique() {
+    const zone = $('liste-historique');
+    zone.replaceChildren(el('p', { className: 'vide', textContent: 'Chargement…' }));
+    try {
+      const { historique } = await api('historique');
+      zone.replaceChildren(...(historique.length
+        ? historique.map(h => el('div', { className: 'ligne-histo' },
+            el('strong', { textContent: h.qui + ' · ' + h.action }),
+            el('small', { textContent: horodatage(h.quand) }),
+            h.detail))
+        : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
+    } catch (err) {
+      zone.replaceChildren(el('p', { className: 'erreur', textContent: err.message }));
+    }
+  }
+
+  // ====== Démarrage ======
+
+  $('btn-ajouter').onclick = () => ouvrirSaisie();
+  $('btn-annuler').onclick = () => $('dlg-saisie').close();
+  $('btn-fermer-justif').onclick = () => $('dlg-justificatif').close();
+  $('btn-export').onclick = exporter;
+  $('form-saisie').onsubmit = enregistrer;
+  $('form-saisie').querySelectorAll('[name=type]').forEach(r => { r.onchange = () => remplirCategories(); });
+  ['recherche', 'filtre-type', 'filtre-mois'].forEach(id => { $(id).oninput = afficherListe; });
+  $('navigation').onclick = e => { if (e.target.dataset.vue) changerVue(e.target.dataset.vue); };
+  $('btn-deconnexion').onclick = async () => {
+    await api('deconnexion').catch(() => {});
+    if (window.google && google.accounts) google.accounts.id.disableAutoSelect();
+    afficherConnexion();
+  };
+  $('form-acces').onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target.elements;
+    if (await enregistrerAcces({ email: f.email.value, nom: f.nom.value, role: f.role.value, actif: true })) e.target.reset();
+  };
+  document.addEventListener('visibilitychange', rafraichir);
+
+  if (etat.session) demarrer().catch(err => afficherConnexion(err.message));
+  else afficherConnexion();
+</script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</body>
+</html>
