@@ -163,8 +163,10 @@
   .budget > * { min-width: 0; }
   .budget .tete { color: var(--doux); font-size: 12px; font-weight: 700; }
   .budget .droite { text-align: right; }
-  .filtres-bilan { grid-template-columns: 1fr 1fr auto; align-items: end; }
-  .filtres-bilan label { margin: 0; }
+  .filtres-bilan { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; }
+  .filtres-bilan label { margin: 0; min-width: 0; }
+  input[type=date] { display: block; min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; } /* sinon la case dépasse sur iPhone */
+  input[type=date]::-webkit-date-and-time-value { text-align: left; }
   .feuille { background: var(--blanc); color: #18203f; padding: 28px; font-size: 14px; }
   .feuille-tete { display: flex; align-items: center; gap: 16px; padding-bottom: 14px; border-bottom: 4px solid var(--jaune); }
   .feuille-tete img { width: 58px; height: auto; }
@@ -189,18 +191,9 @@
     .acces button { grid-column: 1 / -1; }
     .ajouter { left: 16px; right: 16px; }
   }
-  @media print {
-    @page { margin: 15mm; }
-    :root { color-scheme: light; }
-    html, body { background: #fff; }
-    .haut, .filtres-bilan { display: none; }
-    main { max-width: none; padding: 0; }
-    .feuille { padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-    .feuille tr { break-inside: avoid; }
-    .feuille h3 { break-after: avoid; }
-  }
   @media (max-width: 620px) {
-    .filtres-bilan { grid-template-columns: 1fr 1fr; }
+    .filtres-bilan { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .filtres-bilan .principal { grid-column: 1 / -1; }
     .feuille { padding: 16px; font-size: 13px; }
     .feuille th, .feuille td { padding: 6px 4px; }
   }
@@ -372,6 +365,10 @@
   const CATEGORIE_OUVERTURE = 'Solde de départ';
   const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
   const EXCELJS_EMPREINTE = 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz';
+  const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+  const JSPDF_EMPREINTE = 'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk';
+  const AUTOTABLE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+  const AUTOTABLE_EMPREINTE = 'sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3';
   const FORMAT_EUROS = '#,##0.00 [$€-40C];[Red]-#,##0.00 [$€-40C]';
   const SECTIONS_EXPORT = [
     { type: 'recette', titre: 'RECETTES', fonce: '166534', clair: 'DCFCE7', colonne: 3 },
@@ -710,17 +707,21 @@
   /** Chargée seulement à l'export ; l'empreinte fait refuser tout fichier modifié. */
   function chargerExcelJS() {
     if (!etat.excel) {
-      etat.excel = new Promise((resolve, reject) => {
-        const script = el('script', { src: EXCELJS_URL, integrity: EXCELJS_EMPREINTE, crossOrigin: 'anonymous' });
-        script.onload = () => resolve(window.ExcelJS);
-        script.onerror = () => {
+      etat.excel = chargerScript(EXCELJS_URL, EXCELJS_EMPREINTE)
+        .then(() => window.ExcelJS)
+        .catch(() => {
           etat.excel = null;
-          reject(new Error('Impossible de préparer le fichier Excel. Vérifie ta connexion et réessaie.'));
-        };
-        document.head.append(script);
-      });
+          throw new Error('Impossible de préparer le fichier Excel. Vérifie ta connexion et réessaie.');
+        });
     }
     return etat.excel;
+  }
+
+  function chargerScript(src, integrity) {
+    return new Promise((resolve, reject) => {
+      const script = el('script', { src, integrity, crossOrigin: 'anonymous', onload: resolve, onerror: reject });
+      document.head.append(script);
+    });
   }
 
   const remplir = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + argb } });
@@ -991,31 +992,32 @@
       pied ? el('tfoot', {}, rangee('td', pied)) : null);
   }
 
-  function blocCategories(titre, liste, type) {
+  function sectionCategories(titre, liste, type) {
     const groupes = parCategorie(liste.filter(s => s.type === type));
-    return [el('h3', { textContent: titre }), groupes.length
-      ? tableau(['Catégorie', 'Opérations', 'Montant'],
-          groupes.map(g => [g.categorie, g.saisies.length, euros.format(totalEn(g.saisies))]),
-          ['Total', groupes.reduce((n, g) => n + g.saisies.length, 0), euros.format(total(liste, type))])
-      : el('p', { textContent: 'Aucune opération sur la période.' })];
+    if (!groupes.length) return { titre, vide: 'Aucune opération sur la période.' };
+    return {
+      titre,
+      entetes: ['Catégorie', 'Opérations', 'Montant'],
+      lignes: groupes.map(g => [g.categorie, g.saisies.length, euros.format(totalEn(g.saisies))]),
+      pied: ['Total', groupes.reduce((n, g) => n + g.saisies.length, 0), euros.format(total(liste, type))]
+    };
   }
 
-  function blocEvenements() {
+  function sectionEvenements() {
     const ecart = (e, reel) => (reel ? centimes(e.reel.recettes) - centimes(e.reel.depenses) : centimes(e.recettes) - centimes(e.depenses)) / 100;
     if (!etat.evenements.length) return [];
-    return [el('h3', { textContent: 'Résultat par événement (toutes dates)' }),
-      tableau(['Événement', 'Résultat prévu', 'Recettes', 'Dépenses', 'Résultat réel'],
-        etat.evenements.map(e => [e.nom, euros.format(ecart(e, false)), euros.format(e.reel.recettes), euros.format(e.reel.depenses), euros.format(ecart(e, true))]))];
+    return [{
+      titre: 'Résultat par événement (toutes dates)',
+      entetes: ['Événement', 'Résultat prévu', 'Recettes', 'Dépenses', 'Résultat réel'],
+      lignes: etat.evenements.map(e => [e.nom, euros.format(ecart(e, false)), euros.format(e.reel.recettes), euros.format(e.reel.depenses), euros.format(ecart(e, true))])
+    }];
   }
 
   /** Le solde de départ n'est pas une recette de l'exercice : il compte seulement dans le solde d'ouverture. */
-  function afficherBilan() {
+  function donneesBilan() {
     const debut = $('bilan-debut').value;
     const fin = $('bilan-fin').value;
-    if (!debut || !fin || debut > fin) {
-      $('bilan').replaceChildren(el('p', { textContent: 'Choisis une période valide.' }));
-      return;
-    }
+    if (!debut || !fin || debut > fin) return null;
     const ouverture = s => s.categorie === CATEGORIE_OUVERTURE;
     const periode = etat.saisies.filter(s => s.date >= debut && s.date <= fin && !ouverture(s));
     const avant = etat.saisies.filter(s => s.date < debut || (ouverture(s) && s.date <= fin));
@@ -1023,33 +1025,153 @@
     const soldeDebut = solde(avant);
     const resultat = solde(periode);
     const aValider = periode.filter(s => s.aValider).length;
-    const synthese = tableau(['Poste', 'Montant'], [
-      ['Solde au ' + dateCourte(debut), euros.format(soldeDebut)],
-      ['Recettes', euros.format(total(periode, 'recette'))],
-      ['Dépenses', euros.format(total(periode, 'depense'))],
-      ['Résultat de la période', euros.format(resultat)]
-    ], ['Solde au ' + dateCourte(fin), euros.format((centimes(soldeDebut) + centimes(resultat)) / 100)]);
-
-    $('bilan').replaceChildren(
-      el('header', { className: 'feuille-tete' },
-        el('img', { src: 'logo.png', alt: '' }),
-        el('div', {},
-          el('h2', { textContent: 'Bilan financier' }),
-          el('p', { textContent: 'Assemblée générale de l\'AS CY · du ' + dateCourte(debut) + ' au ' + dateCourte(fin) }))),
-      el('h3', { textContent: 'Synthèse' }), synthese,
-      ...blocCategories('Recettes par catégorie', periode, 'recette'),
-      ...blocCategories('Dépenses par catégorie', periode, 'depense'),
-      ...blocEvenements(),
-      el('p', { className: 'pied-bilan', textContent: 'Document établi le ' + dateCourte(aujourdhui()) + ' à partir de ' + periode.length + ' opération(s) de la trésorerie de l\'AS CY'
-        + (aValider ? ', dont ' + aValider + ' pas encore validée(s) par le trésorier.' : '.') }));
+    return {
+      periode: 'Assemblée générale de l\'AS CY · du ' + dateCourte(debut) + ' au ' + dateCourte(fin),
+      fichier: 'Bilan AS CY ' + debut.slice(0, 4) + '-' + fin.slice(0, 4) + '.pdf',
+      sections: [
+        {
+          titre: 'Synthèse',
+          entetes: ['Poste', 'Montant'],
+          lignes: [
+            ['Solde au ' + dateCourte(debut), euros.format(soldeDebut)],
+            ['Recettes', euros.format(total(periode, 'recette'))],
+            ['Dépenses', euros.format(total(periode, 'depense'))],
+            ['Résultat de la période', euros.format(resultat)]
+          ],
+          pied: ['Solde au ' + dateCourte(fin), euros.format((centimes(soldeDebut) + centimes(resultat)) / 100)]
+        },
+        sectionCategories('Recettes par catégorie', periode, 'recette'),
+        sectionCategories('Dépenses par catégorie', periode, 'depense'),
+        ...sectionEvenements()
+      ],
+      note: 'Document établi le ' + dateCourte(aujourdhui()) + ' à partir de ' + periode.length + ' opération(s) de la trésorerie de l\'AS CY'
+        + (aValider ? ', dont ' + aValider + ' pas encore validée(s) par le trésorier.' : '.')
+    };
   }
 
-  /** Le titre de la page devient le nom proposé pour le PDF. */
-  function imprimerBilan() {
-    const titre = document.title;
-    document.title = 'Bilan AS CY ' + $('bilan-debut').value.slice(0, 4) + '-' + $('bilan-fin').value.slice(0, 4);
-    window.print();
-    document.title = titre;
+  function afficherBilan() {
+    const bilan = donneesBilan();
+    if (!bilan) {
+      $('bilan').replaceChildren(el('p', { textContent: 'Choisis une période valide.' }));
+      return;
+    }
+    $('bilan').replaceChildren(
+      el('header', { className: 'feuille-tete' },
+        el('img', { src: 'logo.png', alt: '', id: 'bilan-logo' }),
+        el('div', {},
+          el('h2', { textContent: 'Bilan financier' }),
+          el('p', { textContent: bilan.periode }))),
+      ...bilan.sections.flatMap(s => [el('h3', { textContent: s.titre }),
+        s.vide ? el('p', { textContent: s.vide }) : tableau(s.entetes, s.lignes, s.pied)]),
+      el('p', { className: 'pied-bilan', textContent: bilan.note }));
+  }
+
+  function chargerPdf() {
+    if (!etat.pdf) {
+      etat.pdf = chargerScript(JSPDF_URL, JSPDF_EMPREINTE)
+        .then(() => chargerScript(AUTOTABLE_URL, AUTOTABLE_EMPREINTE))
+        .then(() => window.jspdf.jsPDF)
+        .catch(() => {
+          etat.pdf = null;
+          throw new Error('Impossible de préparer le PDF. Vérifie ta connexion et réessaie.');
+        });
+    }
+    return etat.pdf;
+  }
+
+  /** Les polices du PDF n'ont pas les espaces fines d'Intl.NumberFormat. */
+  const textePdf = v => String(v).replace(/[  ]/g, ' ').replace(/−/g, '-');
+
+  function logoPdf() {
+    const image = $('bilan-logo');
+    const canvas = el('canvas', { width: image.naturalWidth, height: image.naturalHeight });
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    return canvas.toDataURL('image/png');
+  }
+
+  function construirePdf(JsPDF, bilan) {
+    const MARGE = 15;
+    const MARINE = [23, 36, 107];
+    const doc = new JsPDF({ unit: 'mm', format: 'a4' });
+    const largeur = doc.internal.pageSize.getWidth();
+    doc.addImage(logoPdf(), 'PNG', MARGE, 13, 15, 18);
+    doc.setFont('helvetica', 'bold').setFontSize(19).setTextColor(...MARINE);
+    doc.text('BILAN FINANCIER', MARGE + 20, 21);
+    doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(71, 80, 122);
+    doc.text(textePdf(bilan.periode), MARGE + 20, 27);
+    doc.setDrawColor(245, 197, 24).setLineWidth(1).line(MARGE, 34, largeur - MARGE, 34);
+
+    let y = 34;
+    bilan.sections.forEach(s => {
+      if (y > 255) { doc.addPage(); y = MARGE - 6; }
+      doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...MARINE);
+      doc.text(textePdf(s.titre), MARGE, y + 8);
+      y += 10;
+      if (s.vide) {
+        doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(71, 80, 122);
+        doc.text(textePdf(s.vide), MARGE, y + 3);
+        y += 5;
+        return;
+      }
+      doc.autoTable({
+        startY: y,
+        margin: { left: MARGE, right: MARGE },
+        theme: 'plain',
+        head: [s.entetes.map(textePdf)],
+        body: s.lignes.map(l => l.map(textePdf)),
+        foot: s.pied ? [s.pied.map(textePdf)] : undefined,
+        showFoot: 'lastPage',
+        styles: { font: 'helvetica', fontSize: 10, textColor: [24, 32, 63], lineColor: [223, 227, 241], lineWidth: { bottom: 0.2 } },
+        headStyles: { textColor: MARINE, fontStyle: 'bold' },
+        footStyles: { fillColor: [238, 241, 251], textColor: [24, 32, 63], fontStyle: 'bold' },
+        didParseCell: d => { if (d.column.index > 0) d.cell.styles.halign = 'right'; }
+      });
+      y = doc.lastAutoTable.finalY;
+    });
+
+    if (y > 275) { doc.addPage(); y = MARGE - 6; }
+    doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(71, 80, 122);
+    doc.text(doc.splitTextToSize(textePdf(bilan.note), largeur - 2 * MARGE), MARGE, y + 8);
+    return doc;
+  }
+
+  function telechargerFichier(fichier) {
+    const lien = el('a', { href: URL.createObjectURL(fichier), download: fichier.name });
+    document.body.append(lien);
+    lien.click();
+    lien.remove();
+    setTimeout(() => URL.revokeObjectURL(lien.href), 60000);
+  }
+
+  /** Sur téléphone, le partage propose « Enregistrer dans Fichiers », bien plus fiable qu'un téléchargement. */
+  async function livrerFichier(fichier) {
+    const telephone = matchMedia('(pointer: coarse)').matches;
+    if (!telephone || !navigator.canShare || !navigator.canShare({ files: [fichier] })) {
+      telechargerFichier(fichier);
+      return;
+    }
+    try {
+      await navigator.share({ files: [fichier] });
+    } catch (err) {
+      if (err.name !== 'AbortError') telechargerFichier(fichier);
+    }
+  }
+
+  async function enregistrerBilan() {
+    const bilan = donneesBilan();
+    if (!bilan) { alert('Choisis une période valide.'); return; }
+    const bouton = $('btn-bilan');
+    bouton.disabled = true;
+    bouton.textContent = 'Préparation…';
+    try {
+      const doc = construirePdf(await chargerPdf(), bilan);
+      await livrerFichier(new File([doc.output('blob')], bilan.fichier, { type: 'application/pdf' }));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      bouton.disabled = false;
+      bouton.textContent = 'Enregistrer en PDF';
+    }
   }
 
   // ====== Administration ======
@@ -1060,6 +1182,7 @@
       if (b.dataset.vue === vue) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
+    if (vue === 'bilan') chargerPdf().catch(() => {}); // prêt avant le clic : le partage du téléphone l'exige
     if (vue === 'acces') chargerAcces();
     if (vue === 'historique') chargerHistorique();
   }
@@ -1133,7 +1256,7 @@
   $('form-saisie').onsubmit = enregistrer;
   [$('bilan-debut').value, $('bilan-fin').value] = exerciceCourant();
   ['bilan-debut', 'bilan-fin'].forEach(id => { $(id).oninput = afficherBilan; });
-  $('btn-bilan').onclick = imprimerBilan;
+  $('btn-bilan').onclick = enregistrerBilan;
   $('form-evenement').onsubmit = enregistrerEvenement;
   $('btn-annuler-evenement').onclick = fermerEditionEvenement;
   $('form-saisie').querySelectorAll('[name=type]').forEach(r => { r.onchange = () => remplirCategories(); });
