@@ -179,6 +179,16 @@
   .feuille th { color: var(--marine); font-size: 12.5px; }
   .feuille tfoot td, .feuille .fort td { font-weight: 800; background: #eef1fb; }
   .feuille .pied-bilan { margin-top: 22px; font-size: 12px; }
+  .droits { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px; border-top: 1px solid var(--trait); padding-top: 9px; }
+  .droits label { display: flex; align-items: center; gap: 7px; margin: 0; padding: 5px 9px; background: rgba(255,255,255,.07); border: 1.5px solid var(--trait); border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .droits input { width: 17px; height: 17px; min-height: 0; margin: 0; padding: 0; accent-color: var(--jaune); }
+  .droits .aide { align-self: center; }
+  .form-banque { margin-bottom: 14px; }
+  .form-banque label { margin: 0; }
+  .banque-tuiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .banque-tuiles strong { font-size: 24px; }
+  .banque-bloc { margin: 16px 0 8px; font: 800 15px/1.2 var(--f); }
+  .banque-haut { display: flex; justify-content: space-between; gap: 12px; }
   .ligne-histo { padding: 9px 12px; margin-bottom: 6px; font-size: 13.5px; overflow-wrap: anywhere; }
   .ligne-histo small { display: block; color: var(--doux); }
 
@@ -239,8 +249,9 @@
     </div>
     <nav id="navigation" aria-label="Sections">
       <button data-vue="saisies" aria-current="page">Saisies</button>
-      <button data-vue="evenements">Événements</button>
-      <button data-vue="bilan">Bilan</button>
+      <button data-vue="evenements" data-droit="evenements" hidden>Événements</button>
+      <button data-vue="bilan" data-droit="bilan" hidden>Bilan</button>
+      <button data-vue="banque" data-droit="banque" hidden>Banque</button>
       <button data-vue="acces" class="admin" hidden>Accès</button>
       <button data-vue="historique" class="admin" hidden>Historique</button>
     </nav>
@@ -297,12 +308,22 @@
       <article class="feuille" id="bilan"></article>
     </section>
 
+    <section id="vue-banque" hidden>
+      <div class="panneau form-banque">
+        <h2>Rapprochement bancaire</h2>
+        <label>Relevé de la banque (fichier CSV)<input id="fichier-releve" type="file" accept=".csv,.txt,text/csv"></label>
+        <p class="aide">Le fichier est lu sur ton appareil : il n'est ni envoyé ni enregistré.</p>
+        <p class="erreur" id="erreur-banque" role="alert" hidden></p>
+      </div>
+      <div id="resultat-banque" aria-live="polite"></div>
+    </section>
+
     <section id="vue-acces" hidden>
       <form class="form-acces" id="form-acces">
         <label>E-mail Google<input name="email" type="email" required autocomplete="off"></label>
         <label>Nom affiché<input name="nom" required maxlength="60" autocomplete="off"></label>
         <label>Rôle
-          <select name="role"><option value="membre">Membre</option><option value="admin">Admin</option></select>
+          <select name="role"><option value="membre">Membre</option><option value="admin">Trésorier</option></select>
         </label>
         <button class="principal">Ajouter</button>
       </form>
@@ -363,6 +384,9 @@
   const TAILLE_MAX_FICHIER = 5 * 1024 * 1024;
   const COTE_MAX_PHOTO = 1600;
   const CATEGORIE_OUVERTURE = 'Solde de départ';
+  const LIBELLES_DROITS = { evenements: 'Événements', bilan: 'Bilan', banque: 'Banque', valider: 'Valider les saisies', modifier: 'Modifier toutes les saisies' };
+  const MOYENS_BANCAIRES = ['Carte', 'Virement', 'Chèque'];
+  const JOURS_TOLERES = 5; // une opération passe en banque quelques jours après la saisie
   const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
   const EXCELJS_EMPREINTE = 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz';
   const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
@@ -481,11 +505,16 @@
     etat.evenements = r.evenements;
     $('bonjour').textContent = 'Connecté(e) : ' + r.moi.nom;
     document.querySelectorAll('nav .admin').forEach(b => { b.hidden = r.moi.role !== 'admin'; });
+    document.querySelectorAll('nav [data-droit]').forEach(b => { b.hidden = !peut(b.dataset.droit); });
     remplirMois();
     afficherListe();
-    afficherEvenements();
-    afficherBilan();
+    if (peut('evenements')) afficherEvenements();
+    if (peut('bilan')) afficherBilan();
+    if (peut('banque')) afficherRapprochement();
+    if (document.querySelector('nav [aria-current="page"]').hidden) changerVue('saisies'); // droit retiré pendant la session
   }
+
+  const peut = droit => etat.moi.droits.includes(droit);
 
   // ====== Liste ======
 
@@ -536,7 +565,7 @@
 
   function carteSaisie(s) {
     const actions = [];
-    if (s.aValider && etat.moi.role === 'admin') actions.push(el('button', { className: 'principal', textContent: 'Valider', onclick: () => valider(s) }));
+    if (s.aValider && peut('valider')) actions.push(el('button', { className: 'principal', textContent: 'Valider', onclick: () => valider(s) }));
     if (s.justificatif) actions.push(el('button', { className: 'secondaire', textContent: 'Voir le justificatif', onclick: () => voirJustificatif(s) }));
     if (s.modifiable) {
       actions.push(el('button', { className: 'secondaire', textContent: 'Modifier', onclick: () => ouvrirSaisie(s) }));
@@ -569,7 +598,7 @@
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   }
 
-  function ouvrirSaisie(saisie) {
+  function ouvrirSaisie(saisie, prerempli) {
     const f = $('form-saisie');
     f.reset();
     etat.enEdition = saisie || null;
@@ -591,6 +620,12 @@
       f.elements.moyen.value = saisie.moyen;
     } else {
       f.elements.date.value = aujourdhui();
+    }
+    if (prerempli) {
+      f.elements.type.value = prerempli.type;
+      f.elements.montant.value = String(prerempli.montant).replace('.', ',');
+      f.elements.date.value = prerempli.date;
+      f.elements.description.value = prerempli.description;
     }
     remplirCategories(saisie && saisie.categorie);
     $('dlg-saisie').showModal();
@@ -975,6 +1010,166 @@
     }
   }
 
+  // ====== Rapprochement bancaire ======
+
+  const sansAccents = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+  /** Les banques exportent souvent en Windows-1252, parfois en UTF-8. */
+  function decoderReleve(octets) {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(octets).replace(/^﻿/, '');
+    } catch (e) {
+      return new TextDecoder('windows-1252').decode(octets);
+    }
+  }
+
+  function decouperCsv(texte, separateur) {
+    const lignes = [];
+    let ligne = [];
+    let champ = '';
+    let guillemets = false;
+    for (let i = 0; i < texte.length; i++) {
+      const c = texte[i];
+      if (guillemets) {
+        if (c === '"' && texte[i + 1] === '"') { champ += '"'; i++; }
+        else if (c === '"') guillemets = false;
+        else champ += c;
+      } else if (c === '"') guillemets = true;
+      else if (c === separateur) { ligne.push(champ); champ = ''; }
+      else if (c === '\n') { ligne.push(champ); lignes.push(ligne); ligne = []; champ = ''; }
+      else if (c !== '\r') champ += c;
+    }
+    ligne.push(champ);
+    lignes.push(ligne);
+    return lignes;
+  }
+
+  /** Renvoie la position des colonnes utiles, ou null si cette ligne n'est pas l'en-tête. */
+  function colonnesReleve(ligne) {
+    const noms = ligne.map(sansAccents);
+    const trouve = re => noms.findIndex(n => re.test(n));
+    const dateOperation = trouve(/date.*op/);
+    const date = dateOperation !== -1 ? dateOperation : trouve(/^date/);
+    const libelle = trouve(/libelle|description|intitule|detail|motif/);
+    const montant = trouve(/montant|amount/);
+    const debit = trouve(/debit/);
+    const credit = trouve(/credit/);
+    if (date === -1 || libelle === -1 || (montant === -1 && (debit === -1 || credit === -1))) return null;
+    return { date, libelle, montant, debit, credit };
+  }
+
+  function dateReleve(valeur) {
+    const v = String(valeur).trim();
+    const fr = v.match(/^(\d{2})[/.-](\d{2})[/.-](\d{4}|\d{2})/);
+    if (fr) return (fr[3].length === 2 ? '20' + fr[3] : fr[3]) + '-' + fr[2] + '-' + fr[1];
+    const iso = v.match(/^\d{4}-\d{2}-\d{2}/);
+    return iso ? iso[0] : null;
+  }
+
+  /** Accepte 1 234,56, 1.234,56, 1234.56 et les signes + ou -. */
+  function montantReleve(valeur) {
+    let v = String(valeur).replace(/[\s  €]|EUR/g, '').replace('−', '-');
+    if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');
+    return v ? Number(v) : 0;
+  }
+
+  function analyserReleve(texte) {
+    const separateur = [';', '\t', ','].sort((a, b) => texte.split(b).length - texte.split(a).length)[0];
+    const lignes = decouperCsv(texte, separateur);
+    const entete = lignes.findIndex(colonnesReleve);
+    if (entete === -1) throw new Error('Colonnes introuvables. Il faut une date, un libellé et un montant (ou débit et crédit).');
+    const c = colonnesReleve(lignes[entete]);
+    const operations = lignes.slice(entete + 1).map(l => {
+      const signe = c.montant !== -1
+        ? montantReleve(l[c.montant])
+        : Math.abs(montantReleve(l[c.credit])) - Math.abs(montantReleve(l[c.debit]));
+      return { date: dateReleve(l[c.date]), libelle: String(l[c.libelle] || '').trim().replace(/\s+/g, ' '), centimes: Math.round(signe * 100) };
+    }).filter(o => o.date && o.centimes);
+    if (!operations.length) throw new Error('Aucune opération lisible dans ce fichier.');
+    return operations.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /** Associe chaque opération à la saisie de même montant et de date la plus proche, une seule fois. */
+  function rapprocher(operations, saisies) {
+    const ecartJours = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
+    const debut = operations[0].date;
+    const fin = operations[operations.length - 1].date;
+    const libres = saisies.filter(s => MOYENS_BANCAIRES.includes(s.moyen) && s.categorie !== CATEGORIE_OUVERTURE);
+    const resultat = { rapprochees: [], aSaisir: [], helloasso: [], sansLigne: [] };
+    operations.forEach(o => {
+      const type = o.centimes > 0 ? 'recette' : 'depense';
+      const proches = libres
+        .filter(s => s.type === type && centimes(s.montant) === Math.abs(o.centimes) && ecartJours(s.date, o.date) <= JOURS_TOLERES)
+        .sort((a, b) => ecartJours(a.date, o.date) - ecartJours(b.date, o.date));
+      if (proches.length) {
+        libres.splice(libres.indexOf(proches[0]), 1);
+        resultat.rapprochees.push({ operation: o, saisie: proches[0] });
+      } else if (o.centimes > 0 && sansAccents(o.libelle).includes('helloasso')) {
+        resultat.helloasso.push(o); // ses paiements sont déjà comptés un par un
+      } else {
+        resultat.aSaisir.push(o);
+      }
+    });
+    resultat.sansLigne = libres.filter(s => s.date >= debut && s.date <= fin);
+    return resultat;
+  }
+
+  function ligneBanque(titre, montant, details, action) {
+    return el('div', { className: 'ligne-histo' },
+      el('div', { className: 'banque-haut' }, el('strong', { textContent: titre }), el('strong', { textContent: montant })),
+      el('small', { textContent: details }),
+      action || null);
+  }
+
+  function ligneOperation(o, action) {
+    return ligneBanque(o.libelle || 'Opération sans libellé', euros.format(o.centimes / 100), dateCourte(o.date), action);
+  }
+
+  function boutonCreerSaisie(o) {
+    return el('div', { className: 'actions' }, el('button', {
+      className: 'secondaire',
+      textContent: 'Créer la saisie',
+      onclick: () => ouvrirSaisie(null, {
+        type: o.centimes > 0 ? 'recette' : 'depense',
+        montant: Math.abs(o.centimes) / 100,
+        date: o.date,
+        description: o.libelle.slice(0, 200)
+      })
+    }));
+  }
+
+  function afficherRapprochement() {
+    if (!etat.releve) return;
+    const r = rapprocher(etat.releve, etat.saisies);
+    const tuile = (titre, nombre, couleur) => el('div', { className: 'tuile', style: '--c: var(' + couleur + ')' },
+      el('span', { textContent: titre }), el('strong', { textContent: nombre }));
+    const bloc = (titre, lignes) => (lignes.length ? [el('h3', { className: 'banque-bloc', textContent: titre + ' (' + lignes.length + ')' }), ...lignes] : []);
+    $('resultat-banque').replaceChildren(
+      el('div', { className: 'banque-tuiles' },
+        tuile('Rapprochées', r.rapprochees.length, '--vert'),
+        tuile('À saisir', r.aSaisir.length, '--rouge'),
+        tuile('Pas en banque', r.sansLigne.length, '--jaune')),
+      ...bloc('En banque, sans saisie', r.aSaisir.map(o => ligneOperation(o, boutonCreerSaisie(o)))),
+      ...bloc('Saisies absentes du relevé', r.sansLigne.map(s => ligneBanque(s.description,
+        (s.type === 'recette' ? '' : '-') + euros.format(s.montant), [dateCourte(s.date), s.moyen, s.auteur].join(' · ')))),
+      ...bloc('Versements HelloAsso, à ne pas saisir', r.helloasso.map(o => ligneOperation(o))),
+      ...bloc('Rapprochées', r.rapprochees.map(({ operation }) => ligneOperation(operation))));
+  }
+
+  async function importerReleve(fichier) {
+    if (!fichier) return;
+    $('erreur-banque').hidden = true;
+    etat.releve = null;
+    $('resultat-banque').replaceChildren();
+    try {
+      etat.releve = analyserReleve(decoderReleve(await fichier.arrayBuffer()));
+      afficherRapprochement();
+    } catch (err) {
+      $('erreur-banque').textContent = err.message;
+      $('erreur-banque').hidden = false;
+    }
+  }
+
   // ====== Bilan d'assemblée générale ======
 
   /** L'exercice va du 1er septembre au 31 août. */
@@ -1177,7 +1372,7 @@
   // ====== Administration ======
 
   function changerVue(vue) {
-    ['saisies', 'evenements', 'bilan', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
+    ['saisies', 'evenements', 'bilan', 'banque', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
     document.querySelectorAll('nav button').forEach(b => {
       if (b.dataset.vue === vue) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
@@ -1205,9 +1400,18 @@
     $('liste-acces').replaceChildren(...acces.map(a => {
       const role = el('select', { 'ariaLabel': 'Rôle de ' + a.nom },
         el('option', { value: 'membre', textContent: 'Membre' }),
-        el('option', { value: 'admin', textContent: 'Admin' }));
+        el('option', { value: 'admin', textContent: 'Trésorier' }));
       role.value = a.role;
       role.onchange = () => enregistrerAcces({ ...a, role: role.value });
+      const droits = a.role === 'admin'
+        ? [el('span', { className: 'aide', textContent: 'Toutes les autorisations' })]
+        : Object.keys(LIBELLES_DROITS).map(d => el('label', {},
+            el('input', {
+              type: 'checkbox',
+              checked: a.droits.includes(d),
+              onchange: e => enregistrerAcces({ ...a, droits: e.target.checked ? [...a.droits, d] : a.droits.filter(x => x !== d) })
+            }),
+            LIBELLES_DROITS[d]));
       return el('div', { className: 'acces' },
         el('div', {}, el('strong', { textContent: a.nom + (a.actif ? '' : ' (accès retiré)') }), el('small', { textContent: a.email })),
         role,
@@ -1215,7 +1419,8 @@
           className: 'secondaire' + (a.actif ? ' danger' : ''),
           textContent: a.actif ? 'Retirer l\'accès' : 'Rétablir l\'accès',
           onclick: () => enregistrerAcces({ ...a, actif: !a.actif })
-        }));
+        }),
+        el('div', { className: 'droits' }, ...droits));
     }));
   }
 
@@ -1249,6 +1454,7 @@
 
   // ====== Démarrage ======
 
+  $('fichier-releve').onchange = e => importerReleve(e.target.files[0]);
   $('btn-ajouter').onclick = () => ouvrirSaisie();
   $('btn-annuler').onclick = () => $('dlg-saisie').close();
   $('btn-fermer-justif').onclick = () => $('dlg-justificatif').close();
