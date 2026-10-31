@@ -185,6 +185,14 @@
   .droits label { display: flex; align-items: center; gap: 7px; margin: 0; padding: 5px 9px; background: rgba(255,255,255,.07); border: 1.5px solid var(--trait); border-radius: 4px; font-size: 13px; cursor: pointer; }
   .droits input { width: 17px; height: 17px; min-height: 0; margin: 0; padding: 0; accent-color: var(--jaune); }
   .droits .aide { align-self: center; }
+  nav .aide-bouton { margin-left: auto; color: var(--jaune); }
+  #dlg-tutoriel h2 { margin-bottom: 6px; }
+  #dlg-tutoriel p { margin: 0 0 10px; }
+  #dlg-tutoriel ul { margin: 0 0 10px; padding-left: 20px; }
+  #dlg-tutoriel li { margin-bottom: 5px; }
+  .tuto-compteur { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--jaune); margin-bottom: 8px; }
+  .tuto-pied { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; }
+  .tuto-pied div { display: flex; gap: 8px; }
   .form-banque { margin-bottom: 14px; }
   .form-banque label { margin: 0; }
   .banque-tuiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
@@ -256,6 +264,7 @@
       <button data-vue="banque" data-droit="banque" hidden>Banque</button>
       <button data-vue="acces" class="admin" hidden>Accès</button>
       <button data-vue="historique" class="admin" hidden>Historique</button>
+      <button class="aide-bouton" id="btn-aide">Aide</button>
     </nav>
   </header>
 
@@ -366,6 +375,19 @@
       <button class="principal" id="btn-enregistrer">Enregistrer</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="dlg-tutoriel" aria-labelledby="tuto-titre">
+  <div class="tuto-compteur" id="tuto-compteur"></div>
+  <h2 id="tuto-titre"></h2>
+  <div id="tuto-texte"></div>
+  <div class="tuto-pied">
+    <button class="secondaire" id="tuto-passer">Passer</button>
+    <div>
+      <button class="secondaire" id="tuto-precedent">Précédent</button>
+      <button class="principal" id="tuto-suivant">Suivant</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="dlg-justificatif">
@@ -493,6 +515,7 @@
     $('ecran-app').hidden = false;
     clearInterval(etat.minuteur);
     etat.minuteur = setInterval(rafraichir, RAFRAICHISSEMENT);
+    if (!etat.moi.tutorielVu) ouvrirTutoriel();
   }
 
   /** Fait apparaître les saisies des autres, sans déranger une saisie en cours. */
@@ -1031,6 +1054,76 @@
     }
   }
 
+  // ====== Tutoriel ======
+
+  /** Une étape s'affiche seulement si la personne a accès à ce qu'elle présente. */
+  const ETAPES_TUTORIEL = [
+    { vue: 'saisies', titre: 'Bienvenue', texte: ['Ce site tient les comptes de l\'AS CY. Toutes les saisies et leur auteur sont visibles par les personnes autorisées.', 'Ce guide montre seulement ce que ton compte peut utiliser.'] },
+    { vue: 'saisies', titre: 'Ajouter une saisie', liste: [
+      'Appuie sur « + Nouvelle saisie ».',
+      'Choisis dépense ou recette, puis indique le montant, la date, la catégorie et le moyen de paiement.',
+      'Si l\'opération concerne un événement, choisis-le dans la liste.',
+      'Choisis « En attente » si ce n\'est pas encore payé ou reçu.',
+      'Ajoute la photo du ticket ou de la facture.'
+    ] },
+    { vue: 'saisies', titre: 'Retrouver une saisie', liste: [
+      'Le solde, les recettes et les dépenses sont en haut.',
+      'La recherche et les filtres trient par type, par mois ou par état : à valider, en attente, sans justificatif.',
+      'Tu peux modifier ou supprimer tes propres saisies.'
+    ] },
+    { vue: 'saisies', sans: 'valider', titre: 'La validation', texte: ['Tes saisies portent l\'étiquette « À valider » jusqu\'au contrôle du trésorier. Si tu en modifies une déjà validée, elle repasse à valider.'] },
+    { vue: 'saisies', droit: 'valider', titre: 'Valider les saisies', texte: ['Choisis le filtre « À valider », contrôle chaque saisie puis appuie sur « Valider ». Tu reçois un mail, au plus une heure après, quand de nouvelles saisies arrivent.'] },
+    { vue: 'saisies', titre: 'Les cotisations', texte: ['Les cotisations payées sur HelloAsso s\'ajoutent toutes seules : ne les saisis pas, et ne saisis pas non plus le virement de HelloAsso vers la banque.', 'Pour une cotisation en espèces ou par chèque, indique le nom complet de l\'étudiant dans la description.'] },
+    { vue: 'evenements', droit: 'evenements', titre: 'Les événements', liste: [
+      'Indique le nom, un mot-clé et le budget prévu : l\'événement s\'ajoute au tableur.',
+      'Chaque événement compare le prévu au réel, à partir des saisies qui lui sont reliées.',
+      'Une saisie sans événement choisi compte aussi si sa description contient le mot-clé.'
+    ] },
+    { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
+    { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
+    { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
+    { vue: 'historique', admin: true, titre: 'L\'historique', texte: ['Il garde chaque ajout, modification, suppression et validation, avec son auteur et sa date. Les lignes « À vérifier » sont des cas à contrôler.'] },
+    { vue: 'saisies', titre: 'C\'est terminé', texte: ['Tu peux revoir ce guide à tout moment avec le bouton « Aide ».'] }
+  ];
+
+  function etapesTutoriel() {
+    return ETAPES_TUTORIEL.filter(e => (!e.droit || peut(e.droit)) && (!e.sans || !peut(e.sans)) && (!e.admin || etat.moi.role === 'admin'));
+  }
+
+  function afficherEtape() {
+    const { etapes, position } = etat.tutoriel;
+    const e = etapes[position];
+    changerVue(e.vue);
+    $('tuto-compteur').textContent = 'Étape ' + (position + 1) + ' sur ' + etapes.length;
+    $('tuto-titre').textContent = e.titre;
+    $('tuto-texte').replaceChildren(...(e.texte || []).map(t => el('p', { textContent: t })),
+      ...(e.liste ? [el('ul', {}, ...e.liste.map(t => el('li', { textContent: t })))] : []));
+    $('tuto-precedent').hidden = position === 0;
+    $('tuto-passer').hidden = position === etapes.length - 1;
+    $('tuto-suivant').textContent = position === etapes.length - 1 ? 'Terminer' : 'Suivant';
+  }
+
+  function ouvrirTutoriel() {
+    etat.tutoriel = { etapes: etapesTutoriel(), position: 0 };
+    afficherEtape();
+    $('dlg-tutoriel').showModal();
+  }
+
+  function deplacerTutoriel(sens) {
+    const t = etat.tutoriel;
+    if (t.position + sens >= t.etapes.length) { $('dlg-tutoriel').close(); return; }
+    t.position += sens;
+    afficherEtape();
+  }
+
+  /** Enregistré dès la fermeture, y compris avec « Passer » : le guide ne revient pas tout seul. */
+  function surFinTutoriel() {
+    changerVue('saisies');
+    if (etat.moi.tutorielVu) return;
+    etat.moi.tutorielVu = true;
+    api('tutorielVu').catch(() => {});
+  }
+
   // ====== Rapprochement bancaire ======
 
   const sansAccents = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
@@ -1477,6 +1570,11 @@
 
   // ====== Démarrage ======
 
+  $('btn-aide').onclick = ouvrirTutoriel;
+  $('tuto-suivant').onclick = () => deplacerTutoriel(1);
+  $('tuto-precedent').onclick = () => deplacerTutoriel(-1);
+  $('tuto-passer').onclick = () => $('dlg-tutoriel').close();
+  $('dlg-tutoriel').onclose = surFinTutoriel;
   $('fichier-releve').onchange = e => importerReleve(e.target.files[0]);
   $('btn-ajouter').onclick = () => ouvrirSaisie();
   $('btn-annuler').onclick = () => $('dlg-saisie').close();
