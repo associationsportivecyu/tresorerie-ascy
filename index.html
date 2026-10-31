@@ -152,6 +152,16 @@
   .acces small { color: var(--doux); overflow-wrap: anywhere; }
   .form-acces { display: grid; grid-template-columns: 1.3fr 1fr auto auto; gap: 8px; align-items: end; border-top: 5px solid var(--jaune); padding: 12px 14px; margin-bottom: 14px; }
   .form-acces label { margin: 0; }
+  .form-evenement { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-bottom: 14px; }
+  .form-evenement h2, .form-evenement .erreur, .form-evenement .pied { grid-column: 1 / -1; }
+  .form-evenement label { margin: 0; }
+  .form-evenement .pied { margin: 0; }
+  .evenement { background: color-mix(in srgb, var(--marine) 94%, transparent); border-left: 6px solid var(--c, var(--violet)); padding: 13px 14px; margin-bottom: 9px; }
+  .evenement h2 { font-size: 15.5px; font-weight: 800; overflow-wrap: anywhere; }
+  .budget { display: grid; grid-template-columns: auto repeat(3, 1fr); gap: 4px 10px; margin-top: 9px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .budget > * { min-width: 0; }
+  .budget .tete { color: var(--doux); font-size: 12px; font-weight: 700; }
+  .budget .droite { text-align: right; }
   .ligne-histo { padding: 9px 12px; margin-bottom: 6px; font-size: 13.5px; overflow-wrap: anywhere; }
   .ligne-histo small { display: block; color: var(--doux); }
 
@@ -159,7 +169,7 @@
     .filtres { grid-template-columns: 1fr 1fr; }
     .filtres .recherche { grid-column: 1 / -1; }
     .filtres .secondaire { grid-column: 1 / -1; }
-    .form-acces { grid-template-columns: 1fr; }
+    .form-acces, .form-evenement { grid-template-columns: 1fr; }
     .acces { grid-template-columns: 1fr 130px; }
     .acces button { grid-column: 1 / -1; }
     .ajouter { left: 16px; right: 16px; }
@@ -206,6 +216,7 @@
     </div>
     <nav id="navigation" aria-label="Sections">
       <button data-vue="saisies" aria-current="page">Saisies</button>
+      <button data-vue="evenements">Événements</button>
       <button data-vue="acces" class="admin" hidden>Accès</button>
       <button data-vue="historique" class="admin" hidden>Historique</button>
     </nav>
@@ -232,6 +243,24 @@
       </div>
       <div id="liste" aria-live="polite"><p class="vide">Chargement des saisies…</p></div>
       <button class="principal ajouter" id="btn-ajouter">+ Nouvelle saisie</button>
+    </section>
+
+    <section id="vue-evenements" hidden>
+      <form class="panneau form-evenement" id="form-evenement" novalidate>
+        <h2 id="titre-evenement">Nouvel événement</h2>
+        <label>Nom de l'événement<input name="nom" maxlength="100" autocomplete="off" required></label>
+        <label>Mot-clé dans le libellé<input name="motCle" maxlength="60" autocomplete="off" required>
+          <span class="aide">Mets ce mot dans la description des saisies liées à cet événement.</span>
+        </label>
+        <label>Recettes prévues (€)<input name="recettes" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
+        <label>Dépenses prévues (€)<input name="depenses" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
+        <p class="erreur" id="erreur-evenement" role="alert" hidden></p>
+        <div class="pied">
+          <button type="button" class="secondaire" id="btn-annuler-evenement" hidden>Annuler</button>
+          <button class="principal" id="btn-enregistrer-evenement">Ajouter</button>
+        </div>
+      </form>
+      <div id="liste-evenements" aria-live="polite"></div>
     </section>
 
     <section id="vue-acces" hidden>
@@ -413,6 +442,7 @@
     document.querySelectorAll('nav .admin').forEach(b => { b.hidden = r.moi.role !== 'admin'; });
     remplirMois();
     afficherListe();
+    afficherEvenements();
   }
 
   // ====== Liste ======
@@ -795,14 +825,123 @@
     }
   }
 
+  // ====== Événements ======
+
+  async function chargerEvenements() {
+    const zone = $('liste-evenements');
+    if (!etat.evenements) zone.replaceChildren(el('p', { className: 'vide', textContent: 'Chargement des événements…' }));
+    try {
+      etat.evenements = (await api('evenements')).evenements;
+      afficherEvenements();
+    } catch (err) {
+      zone.replaceChildren(el('p', { className: 'erreur', textContent: err.message }));
+    }
+  }
+
+  /** Les réels viennent des saisies du site dont la description contient le mot-clé. */
+  function reelsDe(evenement) {
+    const motCle = evenement.motCle.toLowerCase();
+    const liees = etat.saisies.filter(s => s.description.toLowerCase().includes(motCle));
+    return { recettes: total(liees, 'recette'), depenses: total(liees, 'depense') };
+  }
+
+  function carteEvenement(e) {
+    const reel = reelsDe(e);
+    const resultatPrevu = (centimes(e.recettes) - centimes(e.depenses)) / 100;
+    const resultatReel = (centimes(reel.recettes) - centimes(reel.depenses)) / 100;
+    const cellule = (texte, classe) => el('span', { className: classe, textContent: texte });
+    const nombre = valeur => cellule(euros.format(valeur), 'droite');
+    const actions = etat.moi.role === 'admin' ? el('div', { className: 'actions' },
+      el('button', { className: 'secondaire', textContent: 'Modifier', onclick: () => editerEvenement(e) }),
+      el('button', { className: 'secondaire danger', textContent: 'Supprimer', onclick: () => supprimerEvenement(e) })) : null;
+    return el('article', { className: 'evenement' },
+      el('h2', { textContent: e.nom }),
+      el('div', { className: 'infos', textContent: 'Mot-clé : ' + e.motCle }),
+      el('div', { className: 'budget' },
+        cellule('', 'tete'), cellule('Prévu', 'tete droite'), cellule('Réel', 'tete droite'), cellule('Écart', 'tete droite'),
+        cellule('Recettes', ''), nombre(e.recettes), nombre(reel.recettes), nombre(reel.recettes - e.recettes),
+        cellule('Dépenses', ''), nombre(e.depenses), nombre(reel.depenses), nombre(reel.depenses - e.depenses),
+        cellule('Résultat', ''), nombre(resultatPrevu), nombre(resultatReel), nombre(resultatReel - resultatPrevu)),
+      actions);
+  }
+
+  function afficherEvenements() {
+    if (!etat.evenements) return;
+    $('liste-evenements').replaceChildren(...(etat.evenements.length
+      ? etat.evenements.map(carteEvenement)
+      : [el('p', { className: 'vide', textContent: 'Aucun événement pour le moment.' })]));
+  }
+
+  function erreurEvenement(message) {
+    $('erreur-evenement').textContent = message || '';
+    $('erreur-evenement').hidden = !message;
+  }
+
+  function fermerEditionEvenement() {
+    etat.evenementEdite = null;
+    $('form-evenement').reset();
+    $('titre-evenement').textContent = 'Nouvel événement';
+    $('btn-enregistrer-evenement').textContent = 'Ajouter';
+    $('btn-annuler-evenement').hidden = true;
+    erreurEvenement();
+  }
+
+  function editerEvenement(e) {
+    const f = $('form-evenement').elements;
+    etat.evenementEdite = e;
+    f.nom.value = e.nom;
+    f.motCle.value = e.motCle;
+    f.recettes.value = String(e.recettes).replace('.', ',');
+    f.depenses.value = String(e.depenses).replace('.', ',');
+    $('titre-evenement').textContent = 'Modifier l\'événement';
+    $('btn-enregistrer-evenement').textContent = 'Enregistrer';
+    $('btn-annuler-evenement').hidden = false;
+    erreurEvenement();
+    $('form-evenement').scrollIntoView({ block: 'center' });
+  }
+
+  async function enregistrerEvenement(evenement) {
+    evenement.preventDefault();
+    const f = evenement.target.elements;
+    const bouton = $('btn-enregistrer-evenement');
+    const montant = champ => champ.value.replace(/\s/g, '').replace(',', '.');
+    const donnees = { nom: f.nom.value, motCle: f.motCle.value, recettes: montant(f.recettes), depenses: montant(f.depenses) };
+    const edite = etat.evenementEdite;
+    erreurEvenement();
+    bouton.disabled = true;
+    try {
+      const r = edite
+        ? await api('evenementModifier', { ligne: edite.ligne, nom: edite.nom, evenement: donnees })
+        : await api('evenementAjouter', { evenement: donnees });
+      etat.evenements = r.evenements;
+      fermerEditionEvenement();
+      afficherEvenements();
+    } catch (err) {
+      erreurEvenement(err.message);
+    } finally {
+      bouton.disabled = false;
+    }
+  }
+
+  async function supprimerEvenement(e) {
+    if (!confirm('Supprimer l\'événement « ' + e.nom + ' » du tableur ?')) return;
+    try {
+      etat.evenements = (await api('evenementSupprimer', { ligne: e.ligne, nom: e.nom })).evenements;
+      afficherEvenements();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
   // ====== Administration ======
 
   function changerVue(vue) {
-    ['saisies', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
+    ['saisies', 'evenements', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
     document.querySelectorAll('nav button').forEach(b => {
       if (b.dataset.vue === vue) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
+    if (vue === 'evenements') chargerEvenements();
     if (vue === 'acces') chargerAcces();
     if (vue === 'historique') chargerHistorique();
   }
@@ -874,6 +1013,8 @@
   $('btn-fermer-justif').onclick = () => $('dlg-justificatif').close();
   $('btn-export').onclick = exporter;
   $('form-saisie').onsubmit = enregistrer;
+  $('form-evenement').onsubmit = enregistrerEvenement;
+  $('btn-annuler-evenement').onclick = fermerEditionEvenement;
   $('form-saisie').querySelectorAll('[name=type]').forEach(r => { r.onchange = () => remplirCategories(); });
   ['recherche', 'filtre-type', 'filtre-mois'].forEach(id => { $(id).oninput = afficherListe; });
   $('navigation').onclick = e => { if (e.target.dataset.vue) changerVue(e.target.dataset.vue); };
