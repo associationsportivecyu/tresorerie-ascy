@@ -262,6 +262,7 @@
       <button data-vue="evenements" data-droit="evenements" hidden>Événements</button>
       <button data-vue="bilan" data-droit="bilan" hidden>Bilan</button>
       <button data-vue="banque" data-droit="banque" hidden>Banque</button>
+      <button data-vue="recurrentes" class="admin" hidden>Récurrentes</button>
       <button data-vue="acces" class="admin" hidden>Accès</button>
       <button data-vue="historique" class="admin" hidden>Historique</button>
       <button class="aide-bouton" id="btn-aide">Aide</button>
@@ -329,6 +330,23 @@
         <p class="erreur" id="erreur-banque" role="alert" hidden></p>
       </div>
       <div id="resultat-banque" aria-live="polite"></div>
+    </section>
+
+    <section id="vue-recurrentes" hidden>
+      <form class="panneau form-evenement" id="form-recurrente" novalidate>
+        <h2>Nouvelle saisie récurrente</h2>
+        <label>Jour du mois (1 à 28)<input name="jour" inputmode="numeric" autocomplete="off" required></label>
+        <label>Type
+          <select name="type"><option value="depense">Dépense</option><option value="recette">Recette</option></select>
+        </label>
+        <label>Montant (€)<input name="montant" inputmode="decimal" autocomplete="off" placeholder="0,00" required></label>
+        <label>Catégorie<select name="categorie" required></select></label>
+        <label>Description<input name="description" maxlength="200" autocomplete="off" required></label>
+        <label>Moyen de paiement<select name="moyen" required></select></label>
+        <p class="erreur" id="erreur-recurrente" role="alert" hidden></p>
+        <div class="pied"><button class="principal" id="btn-recurrente">Ajouter</button></div>
+      </form>
+      <div id="liste-recurrentes" aria-live="polite"></div>
     </section>
 
     <section id="vue-acces" hidden>
@@ -1054,6 +1072,83 @@
     }
   }
 
+  // ====== Saisies récurrentes ======
+
+  function erreurRecurrente(message) {
+    $('erreur-recurrente').textContent = message || '';
+    $('erreur-recurrente').hidden = !message;
+  }
+
+  function remplirCategoriesRecurrente() {
+    const f = $('form-recurrente').elements;
+    f.categorie.replaceChildren(el('option', { value: '', textContent: 'Choisir…' }),
+      ...etat.categories[f.type.value].map(c => el('option', { value: c, textContent: c })));
+  }
+
+  function preparerRecurrentes() {
+    const f = $('form-recurrente').elements;
+    remplirCategoriesRecurrente();
+    f.moyen.replaceChildren(el('option', { value: '', textContent: 'Choisir…' }),
+      ...etat.moyens.map(m => el('option', { value: m, textContent: m })));
+    chargerRecurrentes();
+  }
+
+  async function chargerRecurrentes() {
+    erreurRecurrente();
+    try {
+      afficherRecurrentes((await api('recurrentes')).recurrentes);
+    } catch (err) {
+      erreurRecurrente(err.message);
+    }
+  }
+
+  function afficherRecurrentes(recurrentes) {
+    $('liste-recurrentes').replaceChildren(...(recurrentes.length
+      ? recurrentes.map(r => ligneBanque(r.description,
+          (r.type === 'recette' ? '' : '-') + euros.format(r.montant),
+          'Le ' + r.jour + ' de chaque mois · ' + r.categorie + ' · ' + r.moyen + ' · à partir de ' + nomMois(r.depuis),
+          el('div', { className: 'actions' }, el('button', {
+            className: 'secondaire danger',
+            textContent: 'Arrêter',
+            onclick: () => arreterRecurrente(r)
+          }))))
+      : [el('p', { className: 'vide', textContent: 'Aucune saisie récurrente pour le moment.' })]));
+  }
+
+  async function ajouterRecurrente(evenement) {
+    evenement.preventDefault();
+    const f = evenement.target.elements;
+    const bouton = $('btn-recurrente');
+    erreurRecurrente();
+    bouton.disabled = true;
+    try {
+      const r = await api('recurrenteAjouter', { recurrente: {
+        jour: f.jour.value.trim(),
+        type: f.type.value,
+        montant: f.montant.value.replace(/\s/g, '').replace(',', '.'),
+        categorie: f.categorie.value,
+        description: f.description.value,
+        moyen: f.moyen.value
+      } });
+      evenement.target.reset();
+      remplirCategoriesRecurrente();
+      afficherRecurrentes(r.recurrentes);
+    } catch (err) {
+      erreurRecurrente(err.message);
+    } finally {
+      bouton.disabled = false;
+    }
+  }
+
+  async function arreterRecurrente(r) {
+    if (!confirm('Arrêter « ' + r.description + ' » ? Les saisies déjà créées restent.')) return;
+    try {
+      afficherRecurrentes((await api('recurrenteArreter', { id: r.id })).recurrentes);
+    } catch (err) {
+      erreurRecurrente(err.message);
+    }
+  }
+
   // ====== Tutoriel ======
 
   /** Une étape s'affiche seulement si la personne a accès à ce qu'elle présente. */
@@ -1064,7 +1159,7 @@
       'Choisis dépense ou recette, puis indique le montant, la date, la catégorie et le moyen de paiement.',
       'Si l\'opération concerne un événement, choisis-le dans la liste.',
       'Choisis « En attente » si ce n\'est pas encore payé ou reçu.',
-      'Ajoute la photo du ticket ou de la facture.'
+      'Ajoute la photo du ticket ou de la facture. Sinon, tu recevras un rappel par mail chaque semaine pour tes dépenses.'
     ] },
     { vue: 'saisies', titre: 'Retrouver une saisie', liste: [
       'Le solde, les recettes et les dépenses sont en haut.',
@@ -1081,6 +1176,7 @@
     ] },
     { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
     { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
+    { vue: 'recurrentes', admin: true, titre: 'Les saisies récurrentes', texte: ['Pour un montant qui revient chaque mois, comme les frais bancaires, indique le jour et le montant : la saisie s\'ajoute toute seule ce jour-là. « Arrêter » stoppe les prochaines sans toucher à celles déjà créées.'] },
     { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
     { vue: 'historique', admin: true, titre: 'L\'historique', texte: ['Il garde chaque ajout, modification, suppression et validation, avec son auteur et sa date. Les lignes « À vérifier » sont des cas à contrôler.'] },
     { vue: 'saisies', titre: 'C\'est terminé', texte: ['Tu peux revoir ce guide à tout moment avec le bouton « Aide ».'] }
@@ -1488,12 +1584,13 @@
   // ====== Administration ======
 
   function changerVue(vue) {
-    ['saisies', 'evenements', 'bilan', 'banque', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
+    ['saisies', 'evenements', 'bilan', 'banque', 'recurrentes', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
     document.querySelectorAll('nav button').forEach(b => {
       if (b.dataset.vue === vue) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
     if (vue === 'bilan') chargerPdf().catch(() => {}); // prêt avant le clic : le partage du téléphone l'exige
+    if (vue === 'recurrentes') preparerRecurrentes();
     if (vue === 'acces') chargerAcces();
     if (vue === 'historique') chargerHistorique();
   }
@@ -1570,6 +1667,8 @@
 
   // ====== Démarrage ======
 
+  $('form-recurrente').onsubmit = ajouterRecurrente;
+  $('form-recurrente').elements.type.onchange = remplirCategoriesRecurrente;
   $('btn-aide').onclick = ouvrirTutoriel;
   $('tuto-suivant').onclick = () => deplacerTutoriel(1);
   $('tuto-precedent').onclick = () => deplacerTutoriel(-1);
