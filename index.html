@@ -121,6 +121,8 @@
   .montant { font-weight: 900; font-size: 17px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .recette { color: var(--vert); }
   .depense { color: var(--rouge-clair); }
+  .etiquettes { display: flex; flex-wrap: wrap; gap: 5px; }
+  .etiquette.claire { background: rgba(255,255,255,.14); color: var(--blanc); }
   .etiquette { display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: 3px; background: var(--jaune); color: var(--marine); font-size: 11.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .infos { color: var(--doux); font-size: 13px; margin-top: 2px; }
   .auteur { font-size: 13px; font-weight: 600; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--trait); }
@@ -273,6 +275,8 @@
           <option value="recette">Recettes</option>
           <option value="depense">Dépenses</option>
           <option value="avalider" id="option-valider">À valider</option>
+          <option value="enattente" id="option-attente">En attente</option>
+          <option value="sansjustif" id="option-justif">Sans justificatif</option>
         </select>
         <select id="filtre-mois" aria-label="Filtrer par mois"></select>
         <button class="secondaire" id="btn-export">Exporter</button>
@@ -351,6 +355,7 @@
     <label>Événement (facultatif)<select name="evenement"></select></label>
     <label>Description<input name="description" maxlength="200" autocomplete="off" required></label>
     <label>Moyen de paiement<select name="moyen" required></select></label>
+    <label>Statut<select name="statut"><option>Réglé</option><option>En attente</option></select></label>
     <label>Justificatif
       <input name="fichier" type="file" accept="image/*,application/pdf">
       <span class="aide" id="aide-fichier">Photo du ticket ou de la facture, ou PDF (5 Mo maximum).</span>
@@ -534,12 +539,20 @@
     if (mois.includes(valeur)) choix.value = valeur;
   }
 
+  /** Les saisies des agents viennent d'un paiement en ligne : pas de justificatif à demander. */
+  const sansJustificatif = s => !s.justificatif && !s.auteur.startsWith('Agent');
+  const FILTRES_ETAT = {
+    avalider: s => s.aValider,
+    enattente: s => s.statut === 'En attente',
+    sansjustif: sansJustificatif
+  };
+
   function saisiesFiltrees() {
     const q = $('recherche').value.trim().toLowerCase();
     const type = $('filtre-type').value;
     const mois = $('filtre-mois').value;
     return etat.saisies
-      .filter(s => !type || (type === 'avalider' ? s.aValider : s.type === type))
+      .filter(s => !type || (FILTRES_ETAT[type] ? FILTRES_ETAT[type](s) : s.type === type))
       .filter(s => !mois || s.date.startsWith(mois))
       .filter(s => !q || [s.description, s.categorie, s.auteur, s.moyen, s.evenement].join(' ').toLowerCase().includes(q))
       .sort((a, b) => b.date.localeCompare(a.date) || b.creee.localeCompare(a.creee));
@@ -553,7 +566,10 @@
     $('depenses').textContent = euros.format(total(liste, 'depense'));
     $('titre-recettes').textContent = filtre ? 'Recettes (filtre)' : 'Recettes';
     $('titre-depenses').textContent = filtre ? 'Dépenses (filtre)' : 'Dépenses';
-    $('option-valider').textContent = 'À valider (' + etat.saisies.filter(s => s.aValider).length + ')';
+    const compte = type => etat.saisies.filter(FILTRES_ETAT[type]).length;
+    $('option-valider').textContent = 'À valider (' + compte('avalider') + ')';
+    $('option-attente').textContent = 'En attente (' + compte('enattente') + ')';
+    $('option-justif').textContent = 'Sans justificatif (' + compte('sansjustif') + ')';
 
     if (!liste.length) {
       $('liste').replaceChildren(el('p', { className: 'vide', textContent:
@@ -576,7 +592,10 @@
         el('h2', { textContent: s.description }),
         el('span', { className: 'montant ' + s.type, textContent: (s.type === 'recette' ? '+' : '−') + euros.format(s.montant) })),
       el('div', { className: 'infos', textContent: [dateCourte(s.date), s.categorie, s.moyen, s.evenement].filter(Boolean).join(' · ') }),
-      s.aValider ? el('span', { className: 'etiquette', textContent: 'À valider' }) : null,
+      el('div', { className: 'etiquettes' },
+        s.aValider ? el('span', { className: 'etiquette', textContent: 'À valider' }) : null,
+        s.statut === 'En attente' ? el('span', { className: 'etiquette claire', textContent: 'En attente' }) : null,
+        sansJustificatif(s) ? el('span', { className: 'etiquette claire', textContent: 'Sans justificatif' }) : null),
       el('div', { className: 'auteur' },
         s.auteur + ' a effectué cette saisie le ' + horodatage(s.creee),
         s.modifiee ? el('em', { textContent: 'Modifiée par ' + s.modifieePar + ' le ' + horodatage(s.modifiee) }) : null,
@@ -618,6 +637,7 @@
       f.elements.date.value = saisie.date;
       f.elements.description.value = saisie.description;
       f.elements.moyen.value = saisie.moyen;
+      f.elements.statut.value = saisie.statut;
     } else {
       f.elements.date.value = aujourdhui();
     }
@@ -678,7 +698,8 @@
         categorie: f.categorie.value,
         description: f.description.value,
         moyen: f.moyen.value,
-        evenement: f.evenement.value
+        evenement: f.evenement.value,
+        statut: f.statut.value
       };
       const fichier = await preparerFichier(f.fichier.files[0]);
       if (etat.enEdition) await api('modifier', { id: etat.enEdition.id, saisie, fichier });
@@ -1220,6 +1241,7 @@
     const soldeDebut = solde(avant);
     const resultat = solde(periode);
     const aValider = periode.filter(s => s.aValider).length;
+    const enAttente = periode.filter(s => s.statut === 'En attente');
     return {
       periode: 'Assemblée générale de l\'AS CY · du ' + dateCourte(debut) + ' au ' + dateCourte(fin),
       fichier: 'Bilan AS CY ' + debut.slice(0, 4) + '-' + fin.slice(0, 4) + '.pdf',
@@ -1240,7 +1262,8 @@
         ...sectionEvenements()
       ],
       note: 'Document établi le ' + dateCourte(aujourdhui()) + ' à partir de ' + periode.length + ' opération(s) de la trésorerie de l\'AS CY'
-        + (aValider ? ', dont ' + aValider + ' pas encore validée(s) par le trésorier.' : '.')
+        + (aValider ? ', dont ' + aValider + ' pas encore validée(s) par le trésorier' : '') + '.'
+        + (enAttente.length ? ' En attente de règlement : ' + euros.format(total(enAttente, 'recette')) + ' à recevoir et ' + euros.format(total(enAttente, 'depense')) + ' à payer.' : '')
     };
   }
 
