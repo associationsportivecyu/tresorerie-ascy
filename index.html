@@ -121,6 +121,7 @@
   .montant { font-weight: 900; font-size: 17px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .recette { color: var(--vert); }
   .depense { color: var(--rouge-clair); }
+  .etiquette { display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: 3px; background: var(--jaune); color: var(--marine); font-size: 11.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .infos { color: var(--doux); font-size: 13px; margin-top: 2px; }
   .auteur { font-size: 13px; font-weight: 600; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--trait); }
   .auteur em { display: block; font-style: normal; font-weight: 500; color: var(--doux); }
@@ -162,6 +163,20 @@
   .budget > * { min-width: 0; }
   .budget .tete { color: var(--doux); font-size: 12px; font-weight: 700; }
   .budget .droite { text-align: right; }
+  .filtres-bilan { grid-template-columns: 1fr 1fr auto; align-items: end; }
+  .filtres-bilan label { margin: 0; }
+  .feuille { background: var(--blanc); color: #18203f; padding: 28px; font-size: 14px; }
+  .feuille-tete { display: flex; align-items: center; gap: 16px; padding-bottom: 14px; border-bottom: 4px solid var(--jaune); }
+  .feuille-tete img { width: 58px; height: auto; }
+  .feuille h2 { font: 900 21px/1.2 var(--f); color: var(--marine); text-transform: uppercase; }
+  .feuille h3 { font: 800 15px/1.2 var(--f); color: var(--marine); margin: 22px 0 6px; }
+  .feuille p { margin: 2px 0 0; color: #47507a; }
+  .feuille table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .feuille th, .feuille td { padding: 6px 8px; text-align: right; border-bottom: 1px solid #dfe3f1; overflow-wrap: anywhere; }
+  .feuille th:first-child, .feuille td:first-child { text-align: left; }
+  .feuille th { color: var(--marine); font-size: 12.5px; }
+  .feuille tfoot td, .feuille .fort td { font-weight: 800; background: #eef1fb; }
+  .feuille .pied-bilan { margin-top: 22px; font-size: 12px; }
   .ligne-histo { padding: 9px 12px; margin-bottom: 6px; font-size: 13.5px; overflow-wrap: anywhere; }
   .ligne-histo small { display: block; color: var(--doux); }
 
@@ -173,6 +188,21 @@
     .acces { grid-template-columns: 1fr 130px; }
     .acces button { grid-column: 1 / -1; }
     .ajouter { left: 16px; right: 16px; }
+  }
+  @media print {
+    @page { margin: 15mm; }
+    :root { color-scheme: light; }
+    html, body { background: #fff; }
+    .haut, .filtres-bilan { display: none; }
+    main { max-width: none; padding: 0; }
+    .feuille { padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .feuille tr { break-inside: avoid; }
+    .feuille h3 { break-after: avoid; }
+  }
+  @media (max-width: 620px) {
+    .filtres-bilan { grid-template-columns: 1fr 1fr; }
+    .feuille { padding: 16px; font-size: 13px; }
+    .feuille th, .feuille td { padding: 6px 4px; }
   }
   @media (max-width: 460px) {
     .connexion .medaillon { width: 96px; height: 96px; }
@@ -217,6 +247,7 @@
     <nav id="navigation" aria-label="Sections">
       <button data-vue="saisies" aria-current="page">Saisies</button>
       <button data-vue="evenements">Événements</button>
+      <button data-vue="bilan">Bilan</button>
       <button data-vue="acces" class="admin" hidden>Accès</button>
       <button data-vue="historique" class="admin" hidden>Historique</button>
     </nav>
@@ -237,6 +268,7 @@
           <option value="">Tout</option>
           <option value="recette">Recettes</option>
           <option value="depense">Dépenses</option>
+          <option value="avalider" id="option-valider">À valider</option>
         </select>
         <select id="filtre-mois" aria-label="Filtrer par mois"></select>
         <button class="secondaire" id="btn-export">Exporter</button>
@@ -250,7 +282,7 @@
         <h2 id="titre-evenement">Nouvel événement</h2>
         <label>Nom de l'événement<input name="nom" maxlength="100" autocomplete="off" required></label>
         <label>Mot-clé dans le libellé<input name="motCle" maxlength="60" autocomplete="off" required>
-          <span class="aide">Mets ce mot dans la description des saisies liées à cet événement.</span>
+          <span class="aide">Compte aussi les saisies sans événement choisi dont la description contient ce mot.</span>
         </label>
         <label>Recettes prévues (€)<input name="recettes" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
         <label>Dépenses prévues (€)<input name="depenses" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
@@ -261,6 +293,15 @@
         </div>
       </form>
       <div id="liste-evenements" aria-live="polite"></div>
+    </section>
+
+    <section id="vue-bilan" hidden>
+      <div class="filtres filtres-bilan">
+        <label>Du<input id="bilan-debut" type="date"></label>
+        <label>Au<input id="bilan-fin" type="date"></label>
+        <button class="principal" id="btn-bilan">Enregistrer en PDF</button>
+      </div>
+      <article class="feuille" id="bilan"></article>
     </section>
 
     <section id="vue-acces" hidden>
@@ -293,6 +334,7 @@
     <label>Montant (€)<input name="montant" inputmode="decimal" autocomplete="off" placeholder="0,00" required></label>
     <label>Date<input name="date" type="date" required></label>
     <label>Catégorie<select name="categorie" required></select></label>
+    <label>Événement (facultatif)<select name="evenement"></select></label>
     <label>Description<input name="description" maxlength="200" autocomplete="off" required></label>
     <label>Moyen de paiement<select name="moyen" required></select></label>
     <label>Justificatif
@@ -327,6 +369,7 @@
   const RAFRAICHISSEMENT = 60000;
   const TAILLE_MAX_FICHIER = 5 * 1024 * 1024;
   const COTE_MAX_PHOTO = 1600;
+  const CATEGORIE_OUVERTURE = 'Solde de départ';
   const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
   const EXCELJS_EMPREINTE = 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz';
   const FORMAT_EUROS = '#,##0.00 [$€-40C];[Red]-#,##0.00 [$€-40C]';
@@ -438,11 +481,13 @@
     etat.saisies = r.saisies;
     etat.categories = r.categories;
     etat.moyens = r.moyens;
+    etat.evenements = r.evenements;
     $('bonjour').textContent = 'Connecté(e) : ' + r.moi.nom;
     document.querySelectorAll('nav .admin').forEach(b => { b.hidden = r.moi.role !== 'admin'; });
     remplirMois();
     afficherListe();
     afficherEvenements();
+    afficherBilan();
   }
 
   // ====== Liste ======
@@ -468,9 +513,9 @@
     const type = $('filtre-type').value;
     const mois = $('filtre-mois').value;
     return etat.saisies
-      .filter(s => !type || s.type === type)
+      .filter(s => !type || (type === 'avalider' ? s.aValider : s.type === type))
       .filter(s => !mois || s.date.startsWith(mois))
-      .filter(s => !q || [s.description, s.categorie, s.auteur, s.moyen].join(' ').toLowerCase().includes(q))
+      .filter(s => !q || [s.description, s.categorie, s.auteur, s.moyen, s.evenement].join(' ').toLowerCase().includes(q))
       .sort((a, b) => b.date.localeCompare(a.date) || b.creee.localeCompare(a.creee));
   }
 
@@ -482,6 +527,7 @@
     $('depenses').textContent = euros.format(total(liste, 'depense'));
     $('titre-recettes').textContent = filtre ? 'Recettes (filtre)' : 'Recettes';
     $('titre-depenses').textContent = filtre ? 'Dépenses (filtre)' : 'Dépenses';
+    $('option-valider').textContent = 'À valider (' + etat.saisies.filter(s => s.aValider).length + ')';
 
     if (!liste.length) {
       $('liste').replaceChildren(el('p', { className: 'vide', textContent:
@@ -493,6 +539,7 @@
 
   function carteSaisie(s) {
     const actions = [];
+    if (s.aValider && etat.moi.role === 'admin') actions.push(el('button', { className: 'principal', textContent: 'Valider', onclick: () => valider(s) }));
     if (s.justificatif) actions.push(el('button', { className: 'secondaire', textContent: 'Voir le justificatif', onclick: () => voirJustificatif(s) }));
     if (s.modifiable) {
       actions.push(el('button', { className: 'secondaire', textContent: 'Modifier', onclick: () => ouvrirSaisie(s) }));
@@ -502,10 +549,12 @@
       el('div', { className: 'saisie-haut' },
         el('h2', { textContent: s.description }),
         el('span', { className: 'montant ' + s.type, textContent: (s.type === 'recette' ? '+' : '−') + euros.format(s.montant) })),
-      el('div', { className: 'infos', textContent: [dateCourte(s.date), s.categorie, s.moyen].join(' · ') }),
+      el('div', { className: 'infos', textContent: [dateCourte(s.date), s.categorie, s.moyen, s.evenement].filter(Boolean).join(' · ') }),
+      s.aValider ? el('span', { className: 'etiquette', textContent: 'À valider' }) : null,
       el('div', { className: 'auteur' },
         s.auteur + ' a effectué cette saisie le ' + horodatage(s.creee),
-        s.modifiee ? el('em', { textContent: 'Modifiée par ' + s.modifieePar + ' le ' + horodatage(s.modifiee) }) : null),
+        s.modifiee ? el('em', { textContent: 'Modifiée par ' + s.modifieePar + ' le ' + horodatage(s.modifiee) }) : null,
+        s.validee ? el('em', { textContent: 'Validée par ' + s.valideePar + ' le ' + horodatage(s.validee) }) : null),
       actions.length ? el('div', { className: 'actions' }, ...actions) : null);
   }
 
@@ -534,7 +583,10 @@
       : 'Photo du ticket ou de la facture, ou PDF (5 Mo maximum).';
     f.elements.moyen.replaceChildren(el('option', { value: '', textContent: 'Choisir…' }),
       ...etat.moyens.map(m => el('option', { value: m, textContent: m })));
+    f.elements.evenement.replaceChildren(el('option', { value: '', textContent: 'Aucun' }),
+      ...etat.evenements.map(e => el('option', { value: e.nom, textContent: e.nom })));
     if (saisie) {
+      f.elements.evenement.value = saisie.evenement;
       f.elements.type.value = saisie.type;
       f.elements.montant.value = String(saisie.montant).replace('.', ',');
       f.elements.date.value = saisie.date;
@@ -593,7 +645,8 @@
         date: f.date.value,
         categorie: f.categorie.value,
         description: f.description.value,
-        moyen: f.moyen.value
+        moyen: f.moyen.value,
+        evenement: f.evenement.value
       };
       const fichier = await preparerFichier(f.fichier.files[0]);
       if (etat.enEdition) await api('modifier', { id: etat.enEdition.id, saisie, fichier });
@@ -613,6 +666,15 @@
     if (!confirm('Supprimer « ' + s.description + ' » (' + euros.format(s.montant) + ') ?')) return;
     try {
       await api('supprimer', { id: s.id });
+      await charger();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function valider(s) {
+    try {
+      await api('valider', { id: s.id });
       await charger();
     } catch (err) {
       alert(err.message);
@@ -827,26 +889,8 @@
 
   // ====== Événements ======
 
-  async function chargerEvenements() {
-    const zone = $('liste-evenements');
-    if (!etat.evenements) zone.replaceChildren(el('p', { className: 'vide', textContent: 'Chargement des événements…' }));
-    try {
-      etat.evenements = (await api('evenements')).evenements;
-      afficherEvenements();
-    } catch (err) {
-      zone.replaceChildren(el('p', { className: 'erreur', textContent: err.message }));
-    }
-  }
-
-  /** Les réels viennent des saisies du site dont la description contient le mot-clé. */
-  function reelsDe(evenement) {
-    const motCle = evenement.motCle.toLowerCase();
-    const liees = etat.saisies.filter(s => s.description.toLowerCase().includes(motCle));
-    return { recettes: total(liees, 'recette'), depenses: total(liees, 'depense') };
-  }
-
   function carteEvenement(e) {
-    const reel = reelsDe(e);
+    const reel = e.reel;
     const resultatPrevu = (centimes(e.recettes) - centimes(e.depenses)) / 100;
     const resultatReel = (centimes(reel.recettes) - centimes(reel.depenses)) / 100;
     const cellule = (texte, classe) => el('span', { className: classe, textContent: texte });
@@ -866,7 +910,6 @@
   }
 
   function afficherEvenements() {
-    if (!etat.evenements) return;
     $('liste-evenements').replaceChildren(...(etat.evenements.length
       ? etat.evenements.map(carteEvenement)
       : [el('p', { className: 'vide', textContent: 'Aucun événement pour le moment.' })]));
@@ -910,12 +953,10 @@
     erreurEvenement();
     bouton.disabled = true;
     try {
-      const r = edite
-        ? await api('evenementModifier', { ligne: edite.ligne, nom: edite.nom, evenement: donnees })
-        : await api('evenementAjouter', { evenement: donnees });
-      etat.evenements = r.evenements;
+      if (edite) await api('evenementModifier', { ligne: edite.ligne, nom: edite.nom, evenement: donnees });
+      else await api('evenementAjouter', { evenement: donnees });
       fermerEditionEvenement();
-      afficherEvenements();
+      await charger();
     } catch (err) {
       erreurEvenement(err.message);
     } finally {
@@ -924,24 +965,101 @@
   }
 
   async function supprimerEvenement(e) {
-    if (!confirm('Supprimer l\'événement « ' + e.nom + ' » du tableur ?')) return;
+    if (!confirm('Supprimer l\'événement « ' + e.nom + ' » du tableur ? Ses saisies restent, sans événement.')) return;
     try {
-      etat.evenements = (await api('evenementSupprimer', { ligne: e.ligne, nom: e.nom })).evenements;
-      afficherEvenements();
+      await api('evenementSupprimer', { ligne: e.ligne, nom: e.nom });
+      await charger();
     } catch (err) {
       alert(err.message);
     }
   }
 
+  // ====== Bilan d'assemblée générale ======
+
+  /** L'exercice va du 1er septembre au 31 août. */
+  function exerciceCourant() {
+    const d = aujourdhui();
+    const annee = Number(d.slice(0, 4)) - (Number(d.slice(5, 7)) < 9 ? 1 : 0);
+    return [annee + '-09-01', (annee + 1) + '-08-31'];
+  }
+
+  function tableau(entetes, lignes, pied) {
+    const rangee = (balise, cellules) => el('tr', {}, ...cellules.map(c => el(balise, { textContent: c })));
+    return el('table', {},
+      el('thead', {}, rangee('th', entetes)),
+      el('tbody', {}, ...lignes.map(l => rangee('td', l))),
+      pied ? el('tfoot', {}, rangee('td', pied)) : null);
+  }
+
+  function blocCategories(titre, liste, type) {
+    const groupes = parCategorie(liste.filter(s => s.type === type));
+    return [el('h3', { textContent: titre }), groupes.length
+      ? tableau(['Catégorie', 'Opérations', 'Montant'],
+          groupes.map(g => [g.categorie, g.saisies.length, euros.format(totalEn(g.saisies))]),
+          ['Total', groupes.reduce((n, g) => n + g.saisies.length, 0), euros.format(total(liste, type))])
+      : el('p', { textContent: 'Aucune opération sur la période.' })];
+  }
+
+  function blocEvenements() {
+    const ecart = (e, reel) => (reel ? centimes(e.reel.recettes) - centimes(e.reel.depenses) : centimes(e.recettes) - centimes(e.depenses)) / 100;
+    if (!etat.evenements.length) return [];
+    return [el('h3', { textContent: 'Résultat par événement (toutes dates)' }),
+      tableau(['Événement', 'Résultat prévu', 'Recettes', 'Dépenses', 'Résultat réel'],
+        etat.evenements.map(e => [e.nom, euros.format(ecart(e, false)), euros.format(e.reel.recettes), euros.format(e.reel.depenses), euros.format(ecart(e, true))]))];
+  }
+
+  /** Le solde de départ n'est pas une recette de l'exercice : il compte seulement dans le solde d'ouverture. */
+  function afficherBilan() {
+    const debut = $('bilan-debut').value;
+    const fin = $('bilan-fin').value;
+    if (!debut || !fin || debut > fin) {
+      $('bilan').replaceChildren(el('p', { textContent: 'Choisis une période valide.' }));
+      return;
+    }
+    const ouverture = s => s.categorie === CATEGORIE_OUVERTURE;
+    const periode = etat.saisies.filter(s => s.date >= debut && s.date <= fin && !ouverture(s));
+    const avant = etat.saisies.filter(s => s.date < debut || (ouverture(s) && s.date <= fin));
+    const solde = liste => (centimes(total(liste, 'recette')) - centimes(total(liste, 'depense'))) / 100;
+    const soldeDebut = solde(avant);
+    const resultat = solde(periode);
+    const aValider = periode.filter(s => s.aValider).length;
+    const synthese = tableau(['Poste', 'Montant'], [
+      ['Solde au ' + dateCourte(debut), euros.format(soldeDebut)],
+      ['Recettes', euros.format(total(periode, 'recette'))],
+      ['Dépenses', euros.format(total(periode, 'depense'))],
+      ['Résultat de la période', euros.format(resultat)]
+    ], ['Solde au ' + dateCourte(fin), euros.format((centimes(soldeDebut) + centimes(resultat)) / 100)]);
+
+    $('bilan').replaceChildren(
+      el('header', { className: 'feuille-tete' },
+        el('img', { src: 'logo.png', alt: '' }),
+        el('div', {},
+          el('h2', { textContent: 'Bilan financier' }),
+          el('p', { textContent: 'Assemblée générale de l\'AS CY · du ' + dateCourte(debut) + ' au ' + dateCourte(fin) }))),
+      el('h3', { textContent: 'Synthèse' }), synthese,
+      ...blocCategories('Recettes par catégorie', periode, 'recette'),
+      ...blocCategories('Dépenses par catégorie', periode, 'depense'),
+      ...blocEvenements(),
+      el('p', { className: 'pied-bilan', textContent: 'Document établi le ' + dateCourte(aujourdhui()) + ' à partir de ' + periode.length + ' opération(s) de la trésorerie de l\'AS CY'
+        + (aValider ? ', dont ' + aValider + ' pas encore validée(s) par le trésorier.' : '.') }));
+  }
+
+  /** Le titre de la page devient le nom proposé pour le PDF. */
+  function imprimerBilan() {
+    const titre = document.title;
+    document.title = 'Bilan AS CY ' + $('bilan-debut').value.slice(0, 4) + '-' + $('bilan-fin').value.slice(0, 4);
+    window.print();
+    document.title = titre;
+  }
+
   // ====== Administration ======
 
   function changerVue(vue) {
-    ['saisies', 'evenements', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
+    ['saisies', 'evenements', 'bilan', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
     document.querySelectorAll('nav button').forEach(b => {
       if (b.dataset.vue === vue) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
-    if (vue === 'evenements') chargerEvenements();
     if (vue === 'acces') chargerAcces();
     if (vue === 'historique') chargerHistorique();
   }
@@ -1013,6 +1131,9 @@
   $('btn-fermer-justif').onclick = () => $('dlg-justificatif').close();
   $('btn-export').onclick = exporter;
   $('form-saisie').onsubmit = enregistrer;
+  [$('bilan-debut').value, $('bilan-fin').value] = exerciceCourant();
+  ['bilan-debut', 'bilan-fin'].forEach(id => { $(id).oninput = afficherBilan; });
+  $('btn-bilan').onclick = imprimerBilan;
   $('form-evenement').onsubmit = enregistrerEvenement;
   $('btn-annuler-evenement').onclick = fermerEditionEvenement;
   $('form-saisie').querySelectorAll('[name=type]').forEach(r => { r.onchange = () => remplirCategories(); });
