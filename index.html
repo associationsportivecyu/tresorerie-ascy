@@ -233,6 +233,29 @@
   const RAFRAICHISSEMENT = 60000;
   const TAILLE_MAX_FICHIER = 5 * 1024 * 1024;
   const COTE_MAX_PHOTO = 1600;
+  const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+  const EXCELJS_EMPREINTE = 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz';
+  const FORMAT_EUROS = '#,##0.00 [$€-40C];[Red]-#,##0.00 [$€-40C]';
+  const SECTIONS_EXPORT = [
+    { type: 'recette', titre: 'RECETTES', fonce: '166534', clair: 'DCFCE7', colonne: 3 },
+    { type: 'depense', titre: 'DÉPENSES', fonce: '991B1B', clair: 'FEE2E2', colonne: 4 }
+  ];
+  const COULEUR_AUTRE = { fonce: '57534E', clair: 'F5F5F4' };
+  const COULEURS_CATEGORIES = {
+    'Solde de départ': { fonce: '1E3A8A', clair: 'DBEAFE' },
+    'Cotisations': { fonce: '15803D', clair: 'DCFCE7' },
+    'Subventions': { fonce: '0F766E', clair: 'CCFBF1' },
+    'Sponsors': { fonce: '0369A1', clair: 'E0F2FE' },
+    'Événements': { fonce: '4338CA', clair: 'E0E7FF' },
+    'Autre recette': { fonce: '7E22CE', clair: 'F3E8FF' },
+    'Compétitions': { fonce: 'B91C1C', clair: 'FEE2E2' },
+    'Déplacements': { fonce: 'C2410C', clair: 'FFEDD5' },
+    'Hébergement': { fonce: 'A16207', clair: 'FEF9C3' },
+    'Restauration': { fonce: 'BE185D', clair: 'FCE7F3' },
+    'Matériel': { fonce: '4D7C0F', clair: 'ECFCCB' },
+    'Frais bancaires': { fonce: '334155', clair: 'E2E8F0' },
+    'Autre dépense': COULEUR_AUTRE
+  };
 
   const $ = id => document.getElementById(id);
   const euros = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
@@ -524,20 +547,186 @@
     }
   }
 
-  function exporter() {
-    const cellule = v => {
-      const texte = String(v).replace(/^([=+@-])/, "'$1");
-      return '"' + texte.replace(/"/g, '""') + '"';
-    };
-    const lignes = saisiesFiltrees().map(s => [s.date, s.type === 'recette' ? 'Recette' : 'Dépense',
-      (signe(s) * s.montant).toFixed(2).replace('.', ','), s.categorie, s.description, s.moyen, s.auteur].map(cellule).join(';'));
-    const entetes = ['Date', 'Type', 'Montant', 'Catégorie', 'Description', 'Moyen de paiement', 'Saisi par'].map(cellule).join(';');
-    const lien = el('a', {
-      href: URL.createObjectURL(new Blob(['﻿' + [entetes, ...lignes].join('\r\n')], { type: 'text/csv;charset=utf-8' })),
-      download: 'tresorerie-as-cy-' + aujourdhui() + '.csv'
+  // ====== Export Excel ======
+
+  /** Chargée seulement à l'export ; l'empreinte fait refuser tout fichier modifié. */
+  function chargerExcelJS() {
+    if (!etat.excel) {
+      etat.excel = new Promise((resolve, reject) => {
+        const script = el('script', { src: EXCELJS_URL, integrity: EXCELJS_EMPREINTE, crossOrigin: 'anonymous' });
+        script.onload = () => resolve(window.ExcelJS);
+        script.onerror = () => {
+          etat.excel = null;
+          reject(new Error('Impossible de préparer le fichier Excel. Vérifie ta connexion et réessaie.'));
+        };
+        document.head.append(script);
+      });
+    }
+    return etat.excel;
+  }
+
+  const remplir = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + argb } });
+  const couleursDe = categorie => COULEURS_CATEGORIES[categorie] || COULEUR_AUTRE;
+
+  /** Regroupe dans l'ordre des catégories, chaque groupe du plus ancien au plus récent. */
+  function parCategorie(saisies) {
+    const connues = [...etat.categories.recette, ...etat.categories.depense];
+    const autres = saisies.map(s => s.categorie).filter(c => !connues.includes(c));
+    return [...new Set([...connues, ...autres])]
+      .map(categorie => ({
+        categorie,
+        saisies: saisies.filter(s => s.categorie === categorie)
+          .sort((a, b) => a.date.localeCompare(b.date) || a.creee.localeCompare(b.creee))
+      }))
+      .filter(groupe => groupe.saisies.length);
+  }
+
+  /** Colore une ligne entière : fond, texte en gras éventuel et filet du haut. */
+  function colorerLigne(ligne, nbColonnes, { fond, texte, gras, filet }) {
+    for (let c = 1; c <= nbColonnes; c++) {
+      const cellule = ligne.getCell(c);
+      if (fond) cellule.fill = remplir(fond);
+      if (texte) cellule.font = { bold: !!gras, color: { argb: 'FF' + texte } };
+      if (filet) cellule.border = { top: { style: 'thin', color: { argb: 'FF' + filet } } };
+    }
+  }
+
+  function montantCellule(cellule, valeur, formule) {
+    cellule.value = formule ? { formula: formule, result: valeur } : valeur;
+    cellule.numFmt = FORMAT_EUROS;
+  }
+
+  const totalEn = (saisies) => saisies.reduce((t, s) => t + centimes(s.montant), 0) / 100;
+
+  function construireClasseur(ExcelJS, saisies) {
+    const classeur = new ExcelJS.Workbook();
+    const feuille = classeur.addWorksheet('Transactions', {
+      views: [{ state: 'frozen', ySplit: 7 }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
     });
-    lien.click();
-    URL.revokeObjectURL(lien.href);
+    [12, 44, 15, 15, 19, 20].forEach((largeur, i) => { feuille.getColumn(i + 1).width = largeur; });
+
+    feuille.mergeCells('A1:F1');
+    feuille.getCell('A1').value = 'Trésorerie AS CY';
+    feuille.getCell('A1').font = { bold: true, size: 15, color: { argb: 'FF17246B' } };
+    feuille.mergeCells('A2:F2');
+    feuille.getCell('A2').value = 'Export du ' + dateCourte(aujourdhui()) + ' · ' + saisies.length + ' transaction(s)';
+
+    // Lignes 3 à 5 : récapitulatif, rempli une fois les totaux connus.
+    feuille.getRow(7).values = ['Date', 'Description', 'Recette', 'Dépense', 'Moyen de paiement', 'Saisi par'];
+    colorerLigne(feuille.getRow(7), 6, { fond: '17246B', texte: 'FFFFFF', gras: true });
+
+    const resume = classeur.addWorksheet('Résumé');
+    resume.columns = [{ width: 24 }, { width: 14 }, { width: 16 }];
+    resume.addRow(['Catégorie', 'Transactions', 'Total']);
+    colorerLigne(resume.getRow(1), 3, { fond: '17246B', texte: 'FFFFFF', gras: true });
+
+    const totauxSections = {};
+    SECTIONS_EXPORT.forEach(({ type, titre, fonce, clair, colonne }) => {
+      const lettre = colonne === 3 ? 'C' : 'D';
+      const liste = saisies.filter(s => s.type === type);
+      if (!liste.length) return;
+
+      feuille.addRow([]);
+      const bandeau = feuille.addRow([titre]);
+      feuille.mergeCells(bandeau.number, 1, bandeau.number, 6);
+      bandeau.height = 24;
+      bandeau.getCell(1).font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+      bandeau.getCell(1).fill = remplir(fonce);
+      bandeau.getCell(1).alignment = { vertical: 'middle' };
+
+      const titreResume = resume.addRow([titre]);
+      resume.mergeCells(titreResume.number, 1, titreResume.number, 3);
+      titreResume.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      titreResume.getCell(1).fill = remplir(fonce);
+
+      const sousTotaux = [];
+      parCategorie(liste).forEach(({ categorie, saisies: lignes }) => {
+        const couleur = couleursDe(categorie);
+        const titreCategorie = feuille.addRow([categorie]);
+        feuille.mergeCells(titreCategorie.number, 1, titreCategorie.number, 6);
+        titreCategorie.getCell(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+        titreCategorie.getCell(1).fill = remplir(couleur.fonce);
+
+        const debut = feuille.rowCount + 1;
+        lignes.forEach(s => {
+          const [annee, mois, jour] = s.date.split('-').map(Number);
+          const ligne = feuille.addRow([new Date(Date.UTC(annee, mois - 1, jour)), s.description, null, null, s.moyen, s.auteur]);
+          ligne.getCell(1).numFmt = 'dd/mm/yyyy';
+          ligne.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+          colorerLigne(ligne, 6, { fond: couleur.clair });
+          montantCellule(ligne.getCell(colonne), s.montant);
+          ligne.getCell(colonne).font = { bold: true, color: { argb: 'FF' + fonce } };
+        });
+
+        const montant = totalEn(lignes);
+        const sousTotal = feuille.addRow(['Total ' + categorie]);
+        feuille.mergeCells(sousTotal.number, 1, sousTotal.number, 2);
+        colorerLigne(sousTotal, 6, { fond: couleur.clair, texte: couleur.fonce, gras: true, filet: couleur.fonce });
+        montantCellule(sousTotal.getCell(colonne), montant, 'SUM(' + lettre + debut + ':' + lettre + (feuille.rowCount - 1) + ')');
+        sousTotaux.push(lettre + sousTotal.number);
+
+        const ligneResume = resume.addRow([categorie, lignes.length, montant]);
+        ligneResume.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        ligneResume.getCell(1).fill = remplir(couleur.fonce);
+        ligneResume.getCell(2).fill = remplir(couleur.clair);
+        ligneResume.getCell(3).fill = remplir(couleur.clair);
+        ligneResume.getCell(3).numFmt = FORMAT_EUROS;
+      });
+
+      const montantSection = totalEn(liste);
+      const totalSection = feuille.addRow(['TOTAL ' + titre]);
+      feuille.mergeCells(totalSection.number, 1, totalSection.number, 2);
+      colorerLigne(totalSection, 6, { fond: fonce, texte: 'FFFFFF', gras: true });
+      montantCellule(totalSection.getCell(colonne), montantSection, sousTotaux.join('+'));
+      totauxSections[type] = { cellule: lettre + totalSection.number, montant: montantSection };
+
+      const totalResume = resume.addRow(['Total ' + titre.toLowerCase(), liste.length, montantSection]);
+      colorerLigne(totalResume, 3, { fond: clair, texte: fonce, gras: true });
+      totalResume.getCell(3).numFmt = FORMAT_EUROS;
+    });
+
+    const recettes = totauxSections.recette || { montant: 0 };
+    const depenses = totauxSections.depense || { montant: 0 };
+    const solde = (centimes(recettes.montant) - centimes(depenses.montant)) / 100;
+    [
+      ['Total recettes', recettes.montant, recettes.cellule, '166534', 'DCFCE7'],
+      ['Total dépenses', depenses.montant, depenses.cellule, '991B1B', 'FEE2E2'],
+      ['Solde', solde, 'C3-C4', '17246B', 'DBEAFE']
+    ].forEach(([libelle, valeur, formule, texte, fond], i) => {
+      const ligne = feuille.getRow(3 + i);
+      ligne.getCell(2).value = libelle;
+      colorerLigne(ligne, 3, { fond, texte, gras: true });
+      ligne.getCell(1).fill = { type: 'pattern', pattern: 'none' };
+      montantCellule(ligne.getCell(3), valeur, formule);
+    });
+
+    const ligneSolde = resume.addRow(['Solde', saisies.length, solde]);
+    colorerLigne(ligneSolde, 3, { fond: '17246B', texte: 'FFFFFF', gras: true });
+    ligneSolde.getCell(3).numFmt = FORMAT_EUROS;
+    return classeur;
+  }
+
+  async function exporter() {
+    const bouton = $('btn-export');
+    const saisies = saisiesFiltrees();
+    if (!saisies.length) { alert('Aucune transaction à exporter.'); return; }
+    bouton.disabled = true;
+    bouton.textContent = 'Préparation…';
+    try {
+      const contenu = await construireClasseur(await chargerExcelJS(), saisies).xlsx.writeBuffer();
+      const lien = el('a', {
+        href: URL.createObjectURL(new Blob([contenu], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })),
+        download: 'tresorerie-as-cy-' + aujourdhui() + '.xlsx'
+      });
+      lien.click();
+      setTimeout(() => URL.revokeObjectURL(lien.href), 10000);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      bouton.disabled = false;
+      bouton.textContent = 'Exporter';
+    }
   }
 
   // ====== Administration ======
