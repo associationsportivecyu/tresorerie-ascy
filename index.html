@@ -432,6 +432,21 @@
   </form>
 </dialog>
 
+<dialog id="dlg-inscrit" aria-labelledby="titre-inscrit">
+  <form id="form-inscrit" novalidate>
+    <h2 id="titre-inscrit"></h2>
+    <fieldset>
+      <legend>Sports</legend>
+      <div class="droits" id="sports-inscrit"></div>
+    </fieldset>
+    <p class="erreur" id="erreur-inscrit" role="alert" hidden></p>
+    <div class="pied">
+      <button type="button" class="secondaire" id="btn-annuler-inscrit">Annuler</button>
+      <button class="principal" id="btn-enregistrer-inscrit">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlg-tutoriel" aria-labelledby="tuto-titre">
   <div class="tuto-compteur" id="tuto-compteur"></div>
   <h2 id="tuto-titre"></h2>
@@ -466,7 +481,7 @@
   const TAILLE_MAX_FICHIER = 5 * 1024 * 1024;
   const COTE_MAX_PHOTO = 1600;
   const CATEGORIE_OUVERTURE = 'Solde de départ';
-  const LIBELLES_DROITS = { evenements: 'Événements', bilan: 'Bilan et subventions', banque: 'Banque', valider: 'Valider les saisies', modifier: 'Modifier toutes les saisies', inscrits: 'Inscrits' };
+  const LIBELLES_DROITS = { evenements: 'Événements', bilan: 'Bilan et subventions', banque: 'Banque', valider: 'Valider les saisies', modifier: 'Modifier toutes les saisies', inscrits: 'Voir les inscrits', inscritsModifier: 'Modifier les inscrits' };
   const MOYENS_BANCAIRES = ['Carte', 'Virement', 'Chèque'];
   const JOURS_TOLERES = 5; // une opération passe en banque quelques jours après la saisie
   const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
@@ -1292,7 +1307,7 @@
     { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
     { vue: 'subventions', droit: 'bilan', titre: 'Les subventions', texte: ['Indique l\'organisme, le projet, la période et le montant. Choisis un événement pour ne garder que ses opérations, puis enregistre le dossier en PDF. Les informations saisies ne sont pas conservées.'] },
     { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
-    { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur statut et leur mail. Le filtre garde un seul statut. « Inscrire quelqu\'un » ouvre le site d\'inscription. Les statuts se changent dans la feuille d\'inscriptions.'] },
+    { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur statut et leur mail. Le filtre garde un seul statut. « Inscrire quelqu\'un » ouvre le site d\'inscription. Avec l\'autorisation, « Sports » change ses sports et « Retirer » supprime son inscription. Les statuts se changent dans la feuille d\'inscriptions.'] },
     { vue: 'recurrentes', admin: true, titre: 'Les saisies récurrentes', texte: ['Pour un montant qui revient chaque mois, comme les frais bancaires, indique le jour et le montant : la saisie s\'ajoute toute seule ce jour-là. « Arrêter » stoppe les prochaines sans toucher à celles déjà créées.'] },
     { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
     { vue: 'historique', admin: true, titre: 'L\'historique', texte: ['Il garde chaque ajout, modification, suppression et validation, avec son auteur et sa date, ainsi que les connexions et les tentatives refusées. Les lignes « À vérifier » sont des cas à contrôler.'] },
@@ -1857,7 +1872,54 @@
   async function chargerInscrits() {
     $('erreur-inscrits').hidden = true;
     try {
-      etat.inscrits = (await api('inscrits')).inscrits;
+      const r = await api('inscrits');
+      etat.inscrits = r.inscrits;
+      etat.sports = r.sports;
+      afficherInscrits();
+    } catch (err) {
+      $('erreur-inscrits').textContent = err.message;
+      $('erreur-inscrits').hidden = false;
+    }
+  }
+
+  function actionsInscrit(i) {
+    if (!peut('inscritsModifier')) return null;
+    return el('div', { className: 'actions' },
+      el('button', { type: 'button', className: 'secondaire', textContent: 'Sports', onclick: () => ouvrirInscrit(i) }),
+      el('button', { type: 'button', className: 'secondaire danger', textContent: 'Retirer', onclick: () => retirerInscrit(i) }));
+  }
+
+  function ouvrirInscrit(i) {
+    etat.inscritOuvert = i;
+    $('titre-inscrit').textContent = i.prenom + ' ' + i.nom;
+    $('erreur-inscrit').hidden = true;
+    $('sports-inscrit').replaceChildren(...etat.sports.map(s => el('label', {},
+      el('input', { type: 'checkbox', value: s, checked: i.sports.includes(s) }), s)));
+    $('dlg-inscrit').showModal();
+  }
+
+  async function enregistrerInscrit(e) {
+    e.preventDefault();
+    const sports = [...$('sports-inscrit').querySelectorAll('input:checked')].map(c => c.value);
+    $('erreur-inscrit').hidden = true;
+    $('btn-enregistrer-inscrit').disabled = true;
+    try {
+      etat.inscrits = (await api('inscritSports', { cle: etat.inscritOuvert.cle, sports })).inscrits;
+      $('dlg-inscrit').close();
+      afficherInscrits();
+    } catch (err) {
+      $('erreur-inscrit').textContent = err.message;
+      $('erreur-inscrit').hidden = false;
+    } finally {
+      $('btn-enregistrer-inscrit').disabled = false;
+    }
+  }
+
+  async function retirerInscrit(i) {
+    if (!confirm('Retirer ' + i.prenom + ' ' + i.nom + ' des inscrits ? Sa ligne sera supprimée de la feuille d\'inscriptions, pour tous ses sports. S\'il a déjà payé, sa recette reste dans la trésorerie.')) return;
+    $('erreur-inscrits').hidden = true;
+    try {
+      etat.inscrits = (await api('inscritRetirer', { cle: i.cle })).inscrits;
       afficherInscrits();
     } catch (err) {
       $('erreur-inscrits').textContent = err.message;
@@ -1880,13 +1942,16 @@
           el('h2', { textContent: s + ' (' + parSport[s].length + ')' }),
           ...parSport[s].slice().sort((a, b) => a.nom.localeCompare(b.nom, 'fr')).map(i => el('div', { className: 'ligne-histo' },
             el('strong', { textContent: i.prenom + ' ' + i.nom }),
-            el('small', { textContent: i.statut + (i.email ? ' · ' + i.email : '') })))))
+            el('small', { textContent: i.statut + (i.email ? ' · ' + i.email : '') }),
+            actionsInscrit(i)))))
       : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
   }
 
   // ====== Démarrage ======
 
   $('filtre-inscrits').oninput = afficherInscrits;
+  $('form-inscrit').onsubmit = enregistrerInscrit;
+  $('btn-annuler-inscrit').onclick = () => $('dlg-inscrit').close();
   $('form-saisie').elements.fichier.onchange = e => lireTicket(e.target.files[0]);
   $('form-recurrente').onsubmit = ajouterRecurrente;
   $('form-recurrente').elements.type.onchange = remplirCategoriesRecurrente;
