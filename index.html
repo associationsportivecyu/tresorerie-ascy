@@ -378,6 +378,11 @@
     </section>
 
     <section id="vue-historique" hidden>
+      <select id="filtre-historique" aria-label="Filtrer l'historique" style="margin-bottom: 10px">
+        <option value="">Tout</option>
+        <option value="connexions">Connexions</option>
+        <option value="actions">Autres actions</option>
+      </select>
       <div id="liste-historique"></div>
     </section>
   </main>
@@ -534,10 +539,12 @@
     google.accounts.id.renderButton($('bouton-google'), { theme: 'filled_blue', size: 'large', text: 'signin_with', locale: 'fr' });
   }
 
+  const appareil = () => (matchMedia('(pointer: coarse)').matches ? 'telephone' : 'ordinateur');
+
   async function surConnexionGoogle(reponse) {
     $('message-connexion').hidden = true;
     try {
-      const r = await api('connexion', { credential: reponse.credential });
+      const r = await api('connexion', { credential: reponse.credential, appareil: appareil() });
       ecrireSession(r.session);
       await demarrer();
     } catch (err) {
@@ -1271,7 +1278,7 @@
     { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
     { vue: 'recurrentes', admin: true, titre: 'Les saisies récurrentes', texte: ['Pour un montant qui revient chaque mois, comme les frais bancaires, indique le jour et le montant : la saisie s\'ajoute toute seule ce jour-là. « Arrêter » stoppe les prochaines sans toucher à celles déjà créées.'] },
     { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
-    { vue: 'historique', admin: true, titre: 'L\'historique', texte: ['Il garde chaque ajout, modification, suppression et validation, avec son auteur et sa date. Les lignes « À vérifier » sont des cas à contrôler.'] },
+    { vue: 'historique', admin: true, titre: 'L\'historique', texte: ['Il garde chaque ajout, modification, suppression et validation, avec son auteur et sa date, ainsi que les connexions et les tentatives refusées. Les lignes « À vérifier » sont des cas à contrôler.'] },
     { vue: 'saisies', titre: 'C\'est terminé', texte: ['Tu peux revoir ce guide à tout moment avec le bouton « Aide ».'] }
   ];
 
@@ -1809,16 +1816,24 @@
     const zone = $('liste-historique');
     zone.replaceChildren(el('p', { className: 'vide', textContent: 'Chargement…' }));
     try {
-      const { historique } = await api('historique');
-      zone.replaceChildren(...(historique.length
-        ? historique.map(h => el('div', { className: 'ligne-histo' },
-            el('strong', { textContent: h.qui + ' · ' + h.action }),
-            el('small', { textContent: horodatage(h.quand) }),
-            h.detail))
-        : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
+      etat.historique = (await api('historique')).historique;
+      afficherHistorique();
     } catch (err) {
       zone.replaceChildren(el('p', { className: 'erreur', textContent: err.message }));
     }
+  }
+
+  const estConnexion = h => /^(Connexion|Déconnexion)/.test(h.action);
+
+  function afficherHistorique() {
+    const filtre = $('filtre-historique').value;
+    const lignes = etat.historique.filter(h => !filtre || (filtre === 'connexions') === estConnexion(h));
+    $('liste-historique').replaceChildren(...(lignes.length
+      ? lignes.map(h => el('div', { className: 'ligne-histo' },
+          el('strong', { textContent: h.qui + ' · ' + h.action }),
+          el('small', { textContent: horodatage(h.quand) }),
+          h.detail))
+      : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
   }
 
   // ====== Démarrage ======
@@ -1826,6 +1841,7 @@
   $('form-saisie').elements.fichier.onchange = e => lireTicket(e.target.files[0]);
   $('form-recurrente').onsubmit = ajouterRecurrente;
   $('form-recurrente').elements.type.onchange = remplirCategoriesRecurrente;
+  $('filtre-historique').oninput = afficherHistorique;
   $('btn-aide').onclick = ouvrirTutoriel;
   $('tuto-suivant').onclick = () => deplacerTutoriel(1);
   $('tuto-precedent').onclick = () => deplacerTutoriel(-1);
@@ -1850,7 +1866,7 @@
   ['recherche', 'filtre-type', 'filtre-mois'].forEach(id => { $(id).oninput = afficherListe; });
   $('navigation').onclick = e => { if (e.target.dataset.vue) changerVue(e.target.dataset.vue); };
   $('btn-deconnexion').onclick = async () => {
-    await api('deconnexion').catch(() => {});
+    await api('deconnexion', { appareil: appareil() }).catch(() => {});
     if (window.google && google.accounts) google.accounts.id.disableAutoSelect();
     afficherConnexion();
   };
