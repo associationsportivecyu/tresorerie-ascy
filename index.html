@@ -203,6 +203,9 @@
   .ligne-histo small { display: block; color: var(--doux); }
   .bloc-sport { margin-bottom: 12px; gap: 6px; }
   .bloc-sport .ligne-histo { margin: 0; padding: 7px 0; background: none; }
+  #choix-inscrits { display: grid; gap: 6px; max-height: 45vh; overflow-y: auto; margin-top: 10px; }
+  #choix-inscrits button { display: block; width: 100%; height: auto; text-align: left; overflow-wrap: anywhere; }
+  #choix-inscrits small { display: block; color: var(--doux); font-weight: 400; }
 
   @media (max-width: 620px) {
     .filtres { grid-template-columns: 1fr 1fr; }
@@ -381,7 +384,10 @@
     </section>
 
     <section id="vue-inscrits" hidden>
-      <a class="secondaire" href="https://associationsportivecyu.github.io/site-inscription-ascy/" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;margin-bottom:10px">Inscrire quelqu'un</a>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <a class="secondaire" href="https://associationsportivecyu.github.io/site-inscription-ascy/" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">Inscrire quelqu'un</a>
+        <button type="button" class="secondaire" id="btn-modifier-inscrit" hidden>Modifier ou retirer un inscrit</button>
+      </div>
       <select id="filtre-inscrits" aria-label="Filtrer les inscrits par statut" style="margin-bottom: 10px">
         <option value="">Tous les statuts</option>
         <option>En attente de paiement</option>
@@ -432,6 +438,15 @@
   </form>
 </dialog>
 
+<dialog id="dlg-choix-inscrit" aria-labelledby="titre-choix-inscrit">
+  <h2 id="titre-choix-inscrit">Quel étudiant ?</h2>
+  <label>Rechercher<input id="recherche-inscrit" type="search" autocomplete="off" placeholder="Nom ou prénom"></label>
+  <div id="choix-inscrits"></div>
+  <div class="pied">
+    <button type="button" class="secondaire" id="btn-annuler-choix">Annuler</button>
+  </div>
+</dialog>
+
 <dialog id="dlg-inscrit" aria-labelledby="titre-inscrit">
   <form id="form-inscrit" novalidate>
     <h2 id="titre-inscrit"></h2>
@@ -441,6 +456,7 @@
     </fieldset>
     <p class="erreur" id="erreur-inscrit" role="alert" hidden></p>
     <div class="pied">
+      <button type="button" class="secondaire danger" id="btn-retirer-inscrit">Retirer</button>
       <button type="button" class="secondaire" id="btn-annuler-inscrit">Annuler</button>
       <button class="principal" id="btn-enregistrer-inscrit">Enregistrer</button>
     </div>
@@ -1307,7 +1323,7 @@
     { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
     { vue: 'subventions', droit: 'bilan', titre: 'Les subventions', texte: ['Indique l\'organisme, le projet, la période et le montant. Choisis un événement pour ne garder que ses opérations, puis enregistre le dossier en PDF. Les informations saisies ne sont pas conservées.'] },
     { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
-    { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur statut et leur mail. Le filtre garde un seul statut. « Inscrire quelqu\'un » ouvre le site d\'inscription. Avec l\'autorisation, « Sports » change ses sports et « Retirer » supprime son inscription. Les statuts se changent dans la feuille d\'inscriptions.'] },
+    { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur statut et leur mail. Le filtre garde un seul statut. « Inscrire quelqu\'un » ouvre le site d\'inscription. Avec l\'autorisation, « Modifier ou retirer un inscrit » demande l\'étudiant, puis permet de changer ses sports ou de supprimer son inscription. Les statuts se changent dans la feuille d\'inscriptions.'] },
     { vue: 'recurrentes', admin: true, titre: 'Les saisies récurrentes', texte: ['Pour un montant qui revient chaque mois, comme les frais bancaires, indique le jour et le montant : la saisie s\'ajoute toute seule ce jour-là. « Arrêter » stoppe les prochaines sans toucher à celles déjà créées.'] },
     { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
     { vue: 'historique', admin: true, titre: 'L\'historique', texte: ['Il garde chaque ajout, modification, suppression et validation, avec son auteur et sa date, ainsi que les connexions et les tentatives refusées. Les lignes « À vérifier » sont des cas à contrôler.'] },
@@ -1882,11 +1898,24 @@
     }
   }
 
-  function actionsInscrit(i) {
-    if (!peut('inscritsModifier')) return null;
-    return el('div', { className: 'actions' },
-      el('button', { type: 'button', className: 'secondaire', textContent: 'Sports', onclick: () => ouvrirInscrit(i) }),
-      el('button', { type: 'button', className: 'secondaire danger', textContent: 'Retirer', onclick: () => retirerInscrit(i) }));
+  const sansAccent = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+  function ouvrirChoixInscrit() {
+    $('recherche-inscrit').value = '';
+    afficherChoixInscrits();
+    $('dlg-choix-inscrit').showModal();
+  }
+
+  function afficherChoixInscrits() {
+    const recherche = sansAccent($('recherche-inscrit').value.trim());
+    const trouves = etat.inscrits
+      .filter(i => sansAccent(i.prenom + ' ' + i.nom).includes(recherche))
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr') || a.prenom.localeCompare(b.prenom, 'fr'));
+    $('choix-inscrits').replaceChildren(...(trouves.length
+      ? trouves.map(i => el('button', { type: 'button', className: 'secondaire', onclick: () => { $('dlg-choix-inscrit').close(); ouvrirInscrit(i); } },
+          i.prenom + ' ' + i.nom,
+          el('small', { textContent: i.sports.join(', ') + (i.email ? ' · ' + i.email : '') })))
+      : [el('p', { className: 'vide', textContent: 'Aucun étudiant trouvé.' })]));
   }
 
   function ouvrirInscrit(i) {
@@ -1915,8 +1944,10 @@
     }
   }
 
-  async function retirerInscrit(i) {
+  async function retirerInscrit() {
+    const i = etat.inscritOuvert;
     if (!confirm('Retirer ' + i.prenom + ' ' + i.nom + ' des inscrits ? Sa ligne sera supprimée de la feuille d\'inscriptions, pour tous ses sports. S\'il a déjà payé, sa recette reste dans la trésorerie.')) return;
+    $('dlg-inscrit').close();
     $('erreur-inscrits').hidden = true;
     try {
       etat.inscrits = (await api('inscritRetirer', { cle: i.cle })).inscrits;
@@ -1931,6 +1962,7 @@
     const filtre = $('filtre-inscrits').value;
     const valides = etat.inscrits.filter(i => i.statut === 'Inscription validée').length;
     $('resume-inscrits').textContent = 'Inscrits : ' + etat.inscrits.length + ' · Validés : ' + valides;
+    $('btn-modifier-inscrit').hidden = !peut('inscritsModifier');
     // Un étudiant apparaît dans chacun de ses sports
     const parSport = {};
     etat.inscrits.filter(i => !filtre || i.statut === filtre).forEach(i => {
@@ -1942,8 +1974,7 @@
           el('h2', { textContent: s + ' (' + parSport[s].length + ')' }),
           ...parSport[s].slice().sort((a, b) => a.nom.localeCompare(b.nom, 'fr')).map(i => el('div', { className: 'ligne-histo' },
             el('strong', { textContent: i.prenom + ' ' + i.nom }),
-            el('small', { textContent: i.statut + (i.email ? ' · ' + i.email : '') }),
-            actionsInscrit(i)))))
+            el('small', { textContent: i.statut + (i.email ? ' · ' + i.email : '') })))))
       : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
   }
 
@@ -1952,6 +1983,10 @@
   $('filtre-inscrits').oninput = afficherInscrits;
   $('form-inscrit').onsubmit = enregistrerInscrit;
   $('btn-annuler-inscrit').onclick = () => $('dlg-inscrit').close();
+  $('btn-retirer-inscrit').onclick = retirerInscrit;
+  $('btn-modifier-inscrit').onclick = ouvrirChoixInscrit;
+  $('recherche-inscrit').oninput = afficherChoixInscrits;
+  $('btn-annuler-choix').onclick = () => $('dlg-choix-inscrit').close();
   $('form-saisie').elements.fichier.onchange = e => lireTicket(e.target.files[0]);
   $('form-recurrente').onsubmit = ajouterRecurrente;
   $('form-recurrente').elements.type.onchange = remplirCategoriesRecurrente;
