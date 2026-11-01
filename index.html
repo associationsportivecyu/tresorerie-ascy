@@ -261,6 +261,7 @@
       <button data-vue="saisies" aria-current="page">Saisies</button>
       <button data-vue="evenements" data-droit="evenements" hidden>Événements</button>
       <button data-vue="bilan" data-droit="bilan" hidden>Bilan</button>
+      <button data-vue="subventions" data-droit="bilan" hidden>Subventions</button>
       <button data-vue="banque" data-droit="banque" hidden>Banque</button>
       <button data-vue="recurrentes" class="admin" hidden>Récurrentes</button>
       <button data-vue="acces" class="admin" hidden>Accès</button>
@@ -320,6 +321,20 @@
         <button class="principal" id="btn-bilan">Enregistrer en PDF</button>
       </div>
       <article class="feuille" id="bilan"></article>
+    </section>
+
+    <section id="vue-subventions" hidden>
+      <form class="panneau form-evenement" id="form-dossier" novalidate>
+        <h2>Dossier de subvention</h2>
+        <label>Organisme financeur<input name="organisme" maxlength="100" autocomplete="off"></label>
+        <label>Objet du projet<input name="objet" maxlength="150" autocomplete="off"></label>
+        <label>Du<input name="debut" type="date"></label>
+        <label>Au<input name="fin" type="date"></label>
+        <label>Montant de la subvention (€)<input name="montant" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
+        <label>Opérations à inclure<select name="evenement"></select></label>
+        <div class="pied"><button type="button" class="principal" id="btn-dossier">Enregistrer en PDF</button></div>
+      </form>
+      <article class="feuille" id="dossier"></article>
     </section>
 
     <section id="vue-banque" hidden>
@@ -386,6 +401,7 @@
     <label>Justificatif
       <input name="fichier" type="file" accept="image/*,application/pdf">
       <span class="aide" id="aide-fichier">Photo du ticket ou de la facture, ou PDF (5 Mo maximum).</span>
+      <span class="aide" id="statut-ticket" role="status" hidden></span>
     </label>
     <p class="erreur" id="erreur-saisie" role="alert" hidden></p>
     <div class="pied">
@@ -429,12 +445,14 @@
   const TAILLE_MAX_FICHIER = 5 * 1024 * 1024;
   const COTE_MAX_PHOTO = 1600;
   const CATEGORIE_OUVERTURE = 'Solde de départ';
-  const LIBELLES_DROITS = { evenements: 'Événements', bilan: 'Bilan', banque: 'Banque', valider: 'Valider les saisies', modifier: 'Modifier toutes les saisies' };
+  const LIBELLES_DROITS = { evenements: 'Événements', bilan: 'Bilan et subventions', banque: 'Banque', valider: 'Valider les saisies', modifier: 'Modifier toutes les saisies' };
   const MOYENS_BANCAIRES = ['Carte', 'Virement', 'Chèque'];
   const JOURS_TOLERES = 5; // une opération passe en banque quelques jours après la saisie
   const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
   const EXCELJS_EMPREINTE = 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz';
-  const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+  const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+  const TESSERACT_EMPREINTE = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
+  const JSPDF_URL ='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
   const JSPDF_EMPREINTE = 'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk';
   const AUTOTABLE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
   const AUTOTABLE_EMPREINTE = 'sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3';
@@ -555,7 +573,11 @@
     remplirMois();
     afficherListe();
     if (peut('evenements')) afficherEvenements();
-    if (peut('bilan')) afficherBilan();
+    if (peut('bilan')) {
+      afficherBilan();
+      remplirChoixDossier();
+      afficherDossier();
+    }
     if (peut('banque')) afficherRapprochement();
     if (document.querySelector('nav [aria-current="page"]').hidden) changerVue('saisies'); // droit retiré pendant la session
   }
@@ -664,6 +686,8 @@
     etat.enEdition = saisie || null;
     $('titre-saisie').textContent = saisie ? 'Modifier la saisie' : 'Nouvelle saisie';
     $('erreur-saisie').hidden = true;
+    etat.lectureTicket = null;
+    afficherStatutTicket('');
     $('aide-fichier').textContent = saisie && saisie.justificatif
       ? 'Un justificatif est déjà joint. Choisis un fichier seulement pour le remplacer.'
       : 'Photo du ticket ou de la facture, ou PDF (5 Mo maximum).';
@@ -690,6 +714,73 @@
     }
     remplirCategories(saisie && saisie.categorie);
     $('dlg-saisie').showModal();
+  }
+
+  // ====== Lecture des tickets ======
+
+  function chargerLecteur() {
+    if (!etat.lecteur) {
+      etat.lecteur = chargerScript(TESSERACT_URL, TESSERACT_EMPREINTE)
+        .then(() => window.Tesseract)
+        .catch(err => {
+          etat.lecteur = null;
+          throw err;
+        });
+    }
+    return etat.lecteur;
+  }
+
+  function afficherStatutTicket(message) {
+    $('statut-ticket').textContent = message;
+    $('statut-ticket').hidden = !message;
+  }
+
+  const montantsDeLigne = ligne => [...ligne.matchAll(/(\d{1,5}(?:[ .]\d{3})*)\s?[.,]\s?(\d{2})(?!\d)/g)]
+    .map(m => Number(m[1].replace(/[ .]/g, '') + '.' + m[2]));
+
+  /** Cherche le total du ticket, sa date et le nom du commerçant dans le texte lu. */
+  function analyserTicket(texte) {
+    const lignes = texte.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const utiles = lignes.filter(l => !/sous[- ]?total|tva|rendu|monnaie|remise|economie|fidelite|\bht\b/.test(sansAccents(l)));
+    const plusGrand = motif => {
+      const montants = utiles.filter(l => motif.test(sansAccents(l))).flatMap(montantsDeLigne);
+      return montants.length ? Math.max(...montants) : null;
+    };
+    const montant = plusGrand(/total|a payer/) || plusGrand(/ttc|montant|carte|\bcb\b/) || plusGrand(/./);
+
+    const trouvee = texte.match(/\b(\d{2})[/.-](\d{2})[/.-](\d{4}|\d{2})\b/);
+    const dateValide = trouvee && Number(trouvee[1]) >= 1 && Number(trouvee[1]) <= 31 && Number(trouvee[2]) >= 1 && Number(trouvee[2]) <= 12;
+
+    const nom = lignes.find(l => /[a-zà-ÿ]{3}/i.test(l) && !/\d{2}[/.-]\d{2}/.test(l)
+      && !/ticket|facture|bienvenue|bonjour|merci|total|client/.test(sansAccents(l)));
+    return { montant, date: dateValide ? dateReleve(trouvee[0]) : null, nom: nom ? nom.slice(0, 200) : null };
+  }
+
+  /** Complète seulement ce que la personne n'a pas déjà rempli. */
+  function appliquerTicket({ montant, date, nom }) {
+    const f = $('form-saisie').elements;
+    if (montant && !f.montant.value) f.montant.value = String(montant).replace('.', ',');
+    if (date && date <= aujourdhui() && f.date.value === aujourdhui()) f.date.value = date;
+    if (nom && !f.description.value) f.description.value = nom;
+    return !!(montant || date || nom);
+  }
+
+  /** Le texte est lu sur l'appareil : la photo n'est pas envoyée pour cette lecture. */
+  async function lireTicket(fichier) {
+    if (!fichier || !fichier.type.startsWith('image/') || etat.enEdition) return;
+    const lecture = etat.lectureTicket = {};
+    const annulee = () => lecture !== etat.lectureTicket || !$('dlg-saisie').open;
+    afficherStatutTicket('Lecture du ticket… Tu peux continuer à remplir le formulaire.');
+    try {
+      const lecteur = await chargerLecteur();
+      const { data } = await lecteur.recognize(await reduirePhoto(fichier), 'fra');
+      if (annulee()) return;
+      afficherStatutTicket(appliquerTicket(analyserTicket(data.text))
+        ? 'Ticket lu : vérifie le montant, la date et la description.'
+        : 'Ticket illisible : remplis le formulaire à la main.');
+    } catch (err) {
+      if (!annulee()) afficherStatutTicket('Lecture impossible : remplis le formulaire à la main.');
+    }
   }
 
   function lireBase64(blob) {
@@ -1159,7 +1250,8 @@
       'Choisis dépense ou recette, puis indique le montant, la date, la catégorie et le moyen de paiement.',
       'Si l\'opération concerne un événement, choisis-le dans la liste.',
       'Choisis « En attente » si ce n\'est pas encore payé ou reçu.',
-      'Ajoute la photo du ticket ou de la facture. Sinon, tu recevras un rappel par mail chaque semaine pour tes dépenses.'
+      'Ajoute la photo du ticket ou de la facture : le site essaie de lire le montant, la date et le commerçant. Vérifie toujours le résultat.',
+      'Sans justificatif, tu recevras un rappel par mail chaque semaine pour tes dépenses.'
     ] },
     { vue: 'saisies', titre: 'Retrouver une saisie', liste: [
       'Le solde, les recettes et les dépenses sont en haut.',
@@ -1175,6 +1267,7 @@
       'Une saisie sans événement choisi compte aussi si sa description contient le mot-clé.'
     ] },
     { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
+    { vue: 'subventions', droit: 'bilan', titre: 'Les subventions', texte: ['Indique l\'organisme, le projet, la période et le montant. Choisis un événement pour ne garder que ses opérations, puis enregistre le dossier en PDF. Les informations saisies ne sont pas conservées.'] },
     { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
     { vue: 'recurrentes', admin: true, titre: 'Les saisies récurrentes', texte: ['Pour un montant qui revient chaque mois, comme les frais bancaires, indique le jour et le montant : la saisie s\'ajoute toute seule ce jour-là. « Arrêter » stoppe les prochaines sans toucher à celles déjà créées.'] },
     { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
@@ -1432,6 +1525,7 @@
     const aValider = periode.filter(s => s.aValider).length;
     const enAttente = periode.filter(s => s.statut === 'En attente');
     return {
+      titre: 'Bilan financier',
       periode: 'Assemblée générale de l\'AS CY · du ' + dateCourte(debut) + ' au ' + dateCourte(fin),
       fichier: 'Bilan AS CY ' + debut.slice(0, 4) + '-' + fin.slice(0, 4) + '.pdf',
       sections: [
@@ -1456,22 +1550,87 @@
     };
   }
 
-  function afficherBilan() {
-    const bilan = donneesBilan();
-    if (!bilan) {
-      $('bilan').replaceChildren(el('p', { textContent: 'Choisis une période valide.' }));
+  function afficherDocument(zone, document) {
+    if (!document) {
+      zone.replaceChildren(el('p', { textContent: 'Choisis une période valide.' }));
       return;
     }
-    $('bilan').replaceChildren(
+    zone.replaceChildren(
       el('header', { className: 'feuille-tete' },
-        el('img', { src: 'logo.png', alt: '', id: 'bilan-logo' }),
+        el('img', { src: 'logo.png', alt: '' }),
         el('div', {},
-          el('h2', { textContent: 'Bilan financier' }),
-          el('p', { textContent: bilan.periode }))),
-      ...bilan.sections.flatMap(s => [el('h3', { textContent: s.titre }),
+          el('h2', { textContent: document.titre }),
+          el('p', { textContent: document.periode }))),
+      ...document.sections.flatMap(s => [el('h3', { textContent: s.titre }),
         s.vide ? el('p', { textContent: s.vide }) : tableau(s.entetes, s.lignes, s.pied)]),
-      el('p', { className: 'pied-bilan', textContent: bilan.note }));
+      el('p', { className: 'pied-bilan', textContent: document.note }));
   }
+
+  const afficherBilan = () => afficherDocument($('bilan'), donneesBilan());
+
+  // ====== Dossier de subvention ======
+
+  function remplirChoixDossier() {
+    const choix = $('form-dossier').elements.evenement;
+    const valeur = choix.value;
+    choix.replaceChildren(el('option', { value: '', textContent: 'Toutes les opérations de la période' }),
+      ...etat.evenements.map(e => el('option', { value: e.nom, textContent: 'Événement : ' + e.nom })));
+    if (etat.evenements.some(e => e.nom === valeur)) choix.value = valeur;
+  }
+
+  /** Même règle que le réel des événements : l'événement choisi, sinon le mot-clé dans la description. */
+  function operationsDossier(debut, fin, nomEvenement) {
+    const evenement = etat.evenements.find(e => e.nom === nomEvenement);
+    const lie = s => !evenement || s.evenement === evenement.nom
+      || (!s.evenement && s.description.toLowerCase().includes(evenement.motCle.toLowerCase()));
+    return etat.saisies
+      .filter(s => s.date >= debut && s.date <= fin && s.categorie !== CATEGORIE_OUVERTURE && lie(s))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  function donneesDossier() {
+    const f = $('form-dossier').elements;
+    const debut = f.debut.value;
+    const fin = f.fin.value;
+    if (!debut || !fin || debut > fin) return null;
+    const organisme = f.organisme.value.trim() || 'À compléter';
+    const objet = f.objet.value.trim() || 'À compléter';
+    const montant = montantReleve(f.montant.value);
+    const operations = operationsDossier(debut, fin, f.evenement.value);
+    const depenses = operations.filter(s => s.type === 'depense');
+    const recettes = total(operations, 'recette');
+    const coutTotal = total(operations, 'depense');
+    const part = coutTotal > 0 && montant > 0 ? ' (' + Math.round(montant / coutTotal * 100) + ' % du coût total)' : '';
+    const sansJustif = depenses.filter(s => !s.justificatif).length;
+    return {
+      titre: 'Dossier de subvention',
+      periode: 'Association sportive de CY Cergy Paris Université · du ' + dateCourte(debut) + ' au ' + dateCourte(fin),
+      fichier: 'Dossier subvention AS CY ' + debut.slice(0, 4) + '.pdf',
+      sections: [
+        {
+          titre: 'Le projet',
+          entetes: ['Rubrique', 'Détail'],
+          lignes: [['Organisme financeur', organisme], ['Objet', objet], ['Montant de la subvention', euros.format(montant) + part]]
+        },
+        {
+          titre: 'Budget réalisé',
+          entetes: ['Poste', 'Montant'],
+          lignes: [['Dépenses du projet', euros.format(coutTotal)], ['Recettes enregistrées', euros.format(recettes)]],
+          pied: ['Résultat', euros.format((centimes(recettes) - centimes(coutTotal)) / 100)]
+        },
+        sectionCategories('Recettes par catégorie', operations, 'recette'),
+        sectionCategories('Dépenses par catégorie', operations, 'depense'),
+        depenses.length
+          ? { titre: 'Détail des dépenses', entetes: ['Date', 'Description', 'Montant', 'Justificatif'],
+              lignes: depenses.map(s => [dateCourte(s.date), s.description, euros.format(s.montant), s.justificatif ? 'Oui' : 'Non']) }
+          : { titre: 'Détail des dépenses', vide: 'Aucune dépense sur la période.' }
+      ],
+      note: 'Document établi le ' + dateCourte(aujourdhui()) + ' à partir de la trésorerie de l\'AS CY, à faire signer par le trésorier.'
+        + (sansJustif ? ' ' + sansJustif + ' dépense(s) sans justificatif.' : '')
+    };
+  }
+
+  const afficherDossier = () => afficherDocument($('dossier'), donneesDossier());
 
   function chargerPdf() {
     if (!etat.pdf) {
@@ -1489,21 +1648,20 @@
   /** Les polices du PDF n'ont pas les espaces fines d'Intl.NumberFormat. */
   const textePdf = v => String(v).replace(/[  ]/g, ' ').replace(/−/g, '-');
 
-  function logoPdf() {
-    const image = $('bilan-logo');
+  function logoPdf(image) {
     const canvas = el('canvas', { width: image.naturalWidth, height: image.naturalHeight });
     canvas.getContext('2d').drawImage(image, 0, 0);
     return canvas.toDataURL('image/png');
   }
 
-  function construirePdf(JsPDF, bilan) {
+  function construirePdf(JsPDF, bilan, logo) {
     const MARGE = 15;
     const MARINE = [23, 36, 107];
     const doc = new JsPDF({ unit: 'mm', format: 'a4' });
     const largeur = doc.internal.pageSize.getWidth();
-    doc.addImage(logoPdf(), 'PNG', MARGE, 13, 15, 18);
+    doc.addImage(logoPdf(logo), 'PNG', MARGE, 13, 15, 18);
     doc.setFont('helvetica', 'bold').setFontSize(19).setTextColor(...MARINE);
-    doc.text('BILAN FINANCIER', MARGE + 20, 21);
+    doc.text(textePdf(bilan.titre.toUpperCase()), MARGE + 20, 21);
     doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(71, 80, 122);
     doc.text(textePdf(bilan.periode), MARGE + 20, 27);
     doc.setDrawColor(245, 197, 24).setLineWidth(1).line(MARGE, 34, largeur - MARGE, 34);
@@ -1564,15 +1722,13 @@
     }
   }
 
-  async function enregistrerBilan() {
-    const bilan = donneesBilan();
-    if (!bilan) { alert('Choisis une période valide.'); return; }
-    const bouton = $('btn-bilan');
+  async function enregistrerDocument(document, bouton, zone) {
+    if (!document) { alert('Choisis une période valide.'); return; }
     bouton.disabled = true;
     bouton.textContent = 'Préparation…';
     try {
-      const doc = construirePdf(await chargerPdf(), bilan);
-      await livrerFichier(new File([doc.output('blob')], bilan.fichier, { type: 'application/pdf' }));
+      const doc = construirePdf(await chargerPdf(), document, zone.querySelector('img'));
+      await livrerFichier(new File([doc.output('blob')], document.fichier, { type: 'application/pdf' }));
     } catch (err) {
       alert(err.message);
     } finally {
@@ -1584,12 +1740,12 @@
   // ====== Administration ======
 
   function changerVue(vue) {
-    ['saisies', 'evenements', 'bilan', 'banque', 'recurrentes', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
+    ['saisies', 'evenements', 'bilan', 'subventions', 'banque', 'recurrentes', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
     document.querySelectorAll('nav button').forEach(b => {
       if (b.dataset.vue === vue) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
-    if (vue === 'bilan') chargerPdf().catch(() => {}); // prêt avant le clic : le partage du téléphone l'exige
+    if (vue === 'bilan' || vue === 'subventions') chargerPdf().catch(() => {}); // prêt avant le clic : le partage du téléphone l'exige
     if (vue === 'recurrentes') preparerRecurrentes();
     if (vue === 'acces') chargerAcces();
     if (vue === 'historique') chargerHistorique();
@@ -1667,6 +1823,7 @@
 
   // ====== Démarrage ======
 
+  $('form-saisie').elements.fichier.onchange = e => lireTicket(e.target.files[0]);
   $('form-recurrente').onsubmit = ajouterRecurrente;
   $('form-recurrente').elements.type.onchange = remplirCategoriesRecurrente;
   $('btn-aide').onclick = ouvrirTutoriel;
@@ -1682,7 +1839,11 @@
   $('form-saisie').onsubmit = enregistrer;
   [$('bilan-debut').value, $('bilan-fin').value] = exerciceCourant();
   ['bilan-debut', 'bilan-fin'].forEach(id => { $(id).oninput = afficherBilan; });
-  $('btn-bilan').onclick = enregistrerBilan;
+  $('btn-bilan').onclick = () => enregistrerDocument(donneesBilan(), $('btn-bilan'), $('bilan'));
+  [$('form-dossier').elements.debut.value, $('form-dossier').elements.fin.value] = exerciceCourant();
+  $('form-dossier').oninput = afficherDossier;
+  $('form-dossier').onsubmit = e => e.preventDefault();
+  $('btn-dossier').onclick = () => enregistrerDocument(donneesDossier(), $('btn-dossier'), $('dossier'));
   $('form-evenement').onsubmit = enregistrerEvenement;
   $('btn-annuler-evenement').onclick = fermerEditionEvenement;
   $('form-saisie').querySelectorAll('[name=type]').forEach(r => { r.onchange = () => remplirCategories(); });
