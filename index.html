@@ -201,6 +201,8 @@
   .banque-haut { display: flex; justify-content: space-between; gap: 12px; }
   .ligne-histo { padding: 9px 12px; margin-bottom: 6px; font-size: 13.5px; overflow-wrap: anywhere; }
   .ligne-histo small { display: block; color: var(--doux); }
+  .bloc-sport { margin-bottom: 12px; gap: 6px; }
+  .bloc-sport .ligne-histo { margin: 0; padding: 7px 0; background: none; }
 
   @media (max-width: 620px) {
     .filtres { grid-template-columns: 1fr 1fr; }
@@ -263,6 +265,7 @@
       <button data-vue="bilan" data-droit="bilan" hidden>Bilan</button>
       <button data-vue="subventions" data-droit="bilan" hidden>Subventions</button>
       <button data-vue="banque" data-droit="banque" hidden>Banque</button>
+      <button data-vue="inscrits" data-droit="inscrits" hidden>Inscrits</button>
       <button data-vue="recurrentes" class="admin" hidden>Récurrentes</button>
       <button data-vue="acces" class="admin" hidden>Accès</button>
       <button data-vue="historique" class="admin" hidden>Historique</button>
@@ -377,6 +380,19 @@
       <div id="liste-acces"></div>
     </section>
 
+    <section id="vue-inscrits" hidden>
+      <a class="secondaire" href="https://associationsportivecyu.github.io/site-inscription-ascy/" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;margin-bottom:10px">Inscrire quelqu'un</a>
+      <select id="filtre-inscrits" aria-label="Filtrer les inscrits par statut" style="margin-bottom: 10px">
+        <option value="">Tous les statuts</option>
+        <option>En attente de paiement</option>
+        <option>À vérifier</option>
+        <option>Inscription validée</option>
+      </select>
+      <p class="aide" id="resume-inscrits" style="margin: 0 0 10px"></p>
+      <p class="erreur" id="erreur-inscrits" role="alert" hidden></p>
+      <div id="liste-inscrits"></div>
+    </section>
+
     <section id="vue-historique" hidden>
       <select id="filtre-historique" aria-label="Filtrer l'historique" style="margin-bottom: 10px">
         <option value="">Tout</option>
@@ -450,7 +466,7 @@
   const TAILLE_MAX_FICHIER = 5 * 1024 * 1024;
   const COTE_MAX_PHOTO = 1600;
   const CATEGORIE_OUVERTURE = 'Solde de départ';
-  const LIBELLES_DROITS = { evenements: 'Événements', bilan: 'Bilan et subventions', banque: 'Banque', valider: 'Valider les saisies', modifier: 'Modifier toutes les saisies' };
+  const LIBELLES_DROITS = { evenements: 'Événements', bilan: 'Bilan et subventions', banque: 'Banque', valider: 'Valider les saisies', modifier: 'Modifier toutes les saisies', inscrits: 'Inscrits' };
   const MOYENS_BANCAIRES = ['Carte', 'Virement', 'Chèque'];
   const JOURS_TOLERES = 5; // une opération passe en banque quelques jours après la saisie
   const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
@@ -1276,6 +1292,7 @@
     { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
     { vue: 'subventions', droit: 'bilan', titre: 'Les subventions', texte: ['Indique l\'organisme, le projet, la période et le montant. Choisis un événement pour ne garder que ses opérations, puis enregistre le dossier en PDF. Les informations saisies ne sont pas conservées.'] },
     { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
+    { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur statut et leur mail. Le filtre garde un seul statut. « Inscrire quelqu\'un » ouvre le site d\'inscription. Les statuts se changent dans la feuille d\'inscriptions.'] },
     { vue: 'recurrentes', admin: true, titre: 'Les saisies récurrentes', texte: ['Pour un montant qui revient chaque mois, comme les frais bancaires, indique le jour et le montant : la saisie s\'ajoute toute seule ce jour-là. « Arrêter » stoppe les prochaines sans toucher à celles déjà créées.'] },
     { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
     { vue: 'historique', admin: true, titre: 'L\'historique', texte: ['Il garde chaque ajout, modification, suppression et validation, avec son auteur et sa date, ainsi que les connexions et les tentatives refusées. Les lignes « À vérifier » sont des cas à contrôler.'] },
@@ -1747,12 +1764,13 @@
   // ====== Administration ======
 
   function changerVue(vue) {
-    ['saisies', 'evenements', 'bilan', 'subventions', 'banque', 'recurrentes', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
+    ['saisies', 'evenements', 'bilan', 'subventions', 'banque', 'inscrits', 'recurrentes', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
     document.querySelectorAll('nav button').forEach(b => {
       if (b.dataset.vue === vue) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
     if (vue === 'bilan' || vue === 'subventions') chargerPdf().catch(() => {}); // prêt avant le clic : le partage du téléphone l'exige
+    if (vue === 'inscrits') chargerInscrits();
     if (vue === 'recurrentes') preparerRecurrentes();
     if (vue === 'acces') chargerAcces();
     if (vue === 'historique') chargerHistorique();
@@ -1836,8 +1854,39 @@
       : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
   }
 
+  async function chargerInscrits() {
+    $('erreur-inscrits').hidden = true;
+    try {
+      etat.inscrits = (await api('inscrits')).inscrits;
+      afficherInscrits();
+    } catch (err) {
+      $('erreur-inscrits').textContent = err.message;
+      $('erreur-inscrits').hidden = false;
+    }
+  }
+
+  function afficherInscrits() {
+    const filtre = $('filtre-inscrits').value;
+    const valides = etat.inscrits.filter(i => i.statut === 'Inscription validée').length;
+    $('resume-inscrits').textContent = 'Inscrits : ' + etat.inscrits.length + ' · Validés : ' + valides;
+    // Un étudiant apparaît dans chacun de ses sports
+    const parSport = {};
+    etat.inscrits.filter(i => !filtre || i.statut === filtre).forEach(i => {
+      i.sports.forEach(s => { (parSport[s] = parSport[s] || []).push(i); });
+    });
+    const sports = Object.keys(parSport).sort((a, b) => a.localeCompare(b, 'fr'));
+    $('liste-inscrits').replaceChildren(...(sports.length
+      ? sports.map(s => el('section', { className: 'panneau bloc-sport' },
+          el('h2', { textContent: s + ' (' + parSport[s].length + ')' }),
+          ...parSport[s].slice().sort((a, b) => a.nom.localeCompare(b.nom, 'fr')).map(i => el('div', { className: 'ligne-histo' },
+            el('strong', { textContent: i.prenom + ' ' + i.nom }),
+            el('small', { textContent: i.statut + (i.email ? ' · ' + i.email : '') })))))
+      : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
+  }
+
   // ====== Démarrage ======
 
+  $('filtre-inscrits').oninput = afficherInscrits;
   $('form-saisie').elements.fichier.onchange = e => lireTicket(e.target.files[0]);
   $('form-recurrente').onsubmit = ajouterRecurrente;
   $('form-recurrente').elements.type.onchange = remplirCategoriesRecurrente;
