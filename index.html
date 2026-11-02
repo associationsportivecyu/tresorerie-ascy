@@ -397,6 +397,17 @@
       <p class="aide" id="resume-inscrits" style="margin: 0 0 10px"></p>
       <p class="erreur" id="erreur-inscrits" role="alert" hidden></p>
       <div id="liste-inscrits"></div>
+      <section class="panneau bloc-sport" id="bloc-licences" hidden>
+        <h2 id="titre-licences">Licenciés FFSU</h2>
+        <select id="filtre-licences" aria-label="Filtrer les licenciés FFSU" style="margin-bottom: 10px">
+          <option value="">Tous les licenciés</option>
+          <option value="non-paye">Cotisation non trouvée</option>
+          <option value="attente">Licence en attente de validation</option>
+          <option value="a-valider">À valider sur MySport (payé)</option>
+        </select>
+        <p class="aide" id="resume-licences" style="margin: 0 0 10px"></p>
+        <div id="liste-licences"></div>
+      </section>
     </section>
 
     <section id="vue-historique" hidden>
@@ -1323,7 +1334,7 @@
     { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
     { vue: 'subventions', droit: 'bilan', titre: 'Les subventions', texte: ['Indique l\'organisme, le projet, la période et le montant. Choisis un événement pour ne garder que ses opérations, puis enregistre le dossier en PDF. Les informations saisies ne sont pas conservées.'] },
     { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
-    { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur statut et leur mail. Le filtre garde un seul statut. « Inscrire quelqu\'un » ouvre le site d\'inscription. Avec l\'autorisation, « Modifier ou retirer un inscrit » demande l\'étudiant, puis permet de changer ses sports ou de supprimer son inscription. Les statuts se changent dans la feuille d\'inscriptions.'] },
+    { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur statut et leur mail. Le filtre garde un seul statut. « Inscrire quelqu\'un » ouvre le site d\'inscription. Avec l\'autorisation, « Modifier ou retirer un inscrit » demande l\'étudiant, puis permet de changer ses sports ou de supprimer son inscription. Les statuts se changent dans la feuille d\'inscriptions.', 'En bas, « Licenciés FFSU » reprend les licences relevées sur MySport et indique si chacun a payé sa cotisation sur HelloAsso. Le filtre « À valider sur MySport » montre les licences en attente déjà payées.'] },
     { vue: 'recurrentes', admin: true, titre: 'Les saisies récurrentes', texte: ['Pour un montant qui revient chaque mois, comme les frais bancaires, indique le jour et le montant : la saisie s\'ajoute toute seule ce jour-là. « Arrêter » stoppe les prochaines sans toucher à celles déjà créées.'] },
     { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
     { vue: 'historique', admin: true, titre: 'L\'historique', texte: ['Il garde chaque ajout, modification, suppression et validation, avec son auteur et sa date, ainsi que les connexions et les tentatives refusées. Les lignes « À vérifier » sont des cas à contrôler.'] },
@@ -1891,7 +1902,9 @@
       const r = await api('inscrits');
       etat.inscrits = r.inscrits;
       etat.sports = r.sports;
+      etat.licences = r.licences || [];
       afficherInscrits();
+      afficherLicences();
     } catch (err) {
       $('erreur-inscrits').textContent = err.message;
       $('erreur-inscrits').hidden = false;
@@ -1978,8 +1991,35 @@
       : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
   }
 
+  // Relevé MySport croisé avec les paiements HelloAsso par le script
+  function afficherLicences() {
+    const licences = etat.licences;
+    $('bloc-licences').hidden = !licences.length;
+    if (!licences.length) return;
+    const enAttente = l => l.etat !== 'Active';
+    const filtres = {
+      'non-paye': l => !l.paye,
+      'attente': enAttente,
+      'a-valider': l => enAttente(l) && l.paye
+    };
+    const filtre = filtres[$('filtre-licences').value];
+    const payes = licences.filter(l => l.paye).length;
+    $('titre-licences').textContent = 'Licenciés FFSU (' + licences.length + ')';
+    $('resume-licences').textContent = 'Cotisation trouvée : ' + payes + ' · Non trouvée : ' + (licences.length - payes)
+      + ' · En attente de validation : ' + licences.filter(enAttente).length
+      + (licences[0].releve ? ' · Relevé MySport du ' + licences[0].releve : '');
+    const lignes = licences.filter(l => !filtre || filtre(l))
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr') || a.prenom.localeCompare(b.prenom, 'fr'));
+    $('liste-licences').replaceChildren(...(lignes.length
+      ? lignes.map(l => el('div', { className: 'ligne-histo' },
+          el('strong', { textContent: l.prenom + ' ' + l.nom }),
+          el('small', { textContent: [l.paye ? '✅ Cotisation payée' : '⚠️ Cotisation non trouvée', 'Licence ' + l.etat.toLowerCase(), l.sport].filter(Boolean).join(' · ') })))
+      : [el('p', { className: 'vide', textContent: 'Personne dans ce filtre.' })]));
+  }
+
   // ====== Démarrage ======
 
+  $('filtre-licences').oninput = afficherLicences;
   $('filtre-inscrits').oninput = afficherInscrits;
   $('form-inscrit').onsubmit = enregistrerInscrit;
   $('btn-annuler-inscrit').onclick = () => $('dlg-inscrit').close();
