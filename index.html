@@ -1919,6 +1919,11 @@
 
   const sansAccent = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
+  // Les listes de personnes s'affichent « Nom Prénom », dans l'ordre alphabétique du nom
+  const nomComplet = p => (p.nom + ' ' + p.prenom).trim();
+  const parNom = (a, b) => a.nom.trim().localeCompare(b.nom.trim(), 'fr', { sensitivity: 'base' })
+    || a.prenom.trim().localeCompare(b.prenom.trim(), 'fr', { sensitivity: 'base' });
+
   function ouvrirChoixInscrit() {
     $('recherche-inscrit').value = '';
     afficherChoixInscrits();
@@ -1929,10 +1934,10 @@
     const recherche = sansAccent($('recherche-inscrit').value.trim());
     const trouves = etat.inscrits
       .filter(i => sansAccent(i.prenom + ' ' + i.nom).includes(recherche))
-      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr') || a.prenom.localeCompare(b.prenom, 'fr'));
+      .sort(parNom);
     $('choix-inscrits').replaceChildren(...(trouves.length
       ? trouves.map(i => el('button', { type: 'button', className: 'secondaire', onclick: () => { $('dlg-choix-inscrit').close(); ouvrirInscrit(i); } },
-          i.prenom + ' ' + i.nom,
+          nomComplet(i),
           el('small', { textContent: i.sports.join(', ') + (i.email ? ' · ' + i.email : '') })))
       : [el('p', { className: 'vide', textContent: 'Aucun étudiant trouvé.' })]));
   }
@@ -1995,11 +2000,11 @@
       + ' · Payé mais non inscrit : ' + compte('Payé mais non inscrit')
       + ' · Paiement en attente : ' + compte('Paiement en attente');
     $('btn-modifier-inscrit').hidden = !peut('inscritsModifier');
-    const horsListeVus = horsListe.filter(p => !filtre || situation(p) === filtre);
+    const horsListeVus = horsListe.filter(p => !filtre || situation(p) === filtre).sort(parNom);
     $('bloc-payes-non-inscrits').hidden = !horsListeVus.length;
     $('titre-payes-non-inscrits').textContent = 'Payé mais absent de la liste (' + horsListeVus.length + ')';
     $('liste-payes-non-inscrits').replaceChildren(...horsListeVus.map(p => el('div', { className: 'ligne-histo' },
-      el('strong', { textContent: p.prenom + ' ' + p.nom }),
+      el('strong', { textContent: nomComplet(p) }),
       el('small', { textContent: PICTO_SITUATION[situation(p)] + ' ' + situation(p) }))));
     // Un étudiant apparaît dans chacun de ses sports
     const parSport = {};
@@ -2010,8 +2015,8 @@
     $('liste-inscrits').replaceChildren(...(sports.length
       ? sports.map(s => el('section', { className: 'panneau bloc-sport' },
           el('h2', { textContent: s + ' (' + parSport[s].length + ')' }),
-          ...parSport[s].slice().sort((a, b) => a.nom.localeCompare(b.nom, 'fr')).map(i => el('div', { className: 'ligne-histo' },
-            el('strong', { textContent: i.prenom + ' ' + i.nom }),
+          ...parSport[s].slice().sort(parNom).map(i => el('div', { className: 'ligne-histo' },
+            el('strong', { textContent: nomComplet(i) }),
             el('small', { textContent: PICTO_SITUATION[situation(i)] + ' ' + situation(i)
               + (!i.paye && !i.licence ? ' · pas de licence FFSU' : '') + (i.email ? ' · ' + i.email : '') })))))
       : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
@@ -2035,10 +2040,10 @@
       + ' · En attente de validation : ' + licences.filter(enAttente).length
       + (licences[0].releve ? ' · Relevé MySport du ' + licences[0].releve : '');
     const lignes = licences.filter(l => !filtre || filtre(l))
-      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr') || a.prenom.localeCompare(b.prenom, 'fr'));
+      .sort(parNom);
     $('liste-licences').replaceChildren(...(lignes.length
       ? lignes.map(l => el('div', { className: 'ligne-histo' },
-          el('strong', { textContent: l.prenom + ' ' + l.nom }),
+          el('strong', { textContent: nomComplet(l) }),
           el('small', { textContent: [l.paye ? '✅ Cotisation payée' : '⚠️ Cotisation non trouvée', 'Licence ' + l.etat.toLowerCase(), l.sport].filter(Boolean).join(' · ') })))
       : [el('p', { className: 'vide', textContent: 'Personne dans ce filtre.' })]));
   }
