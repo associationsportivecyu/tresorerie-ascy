@@ -388,14 +388,19 @@
         <a class="secondaire" href="https://associationsportivecyu.github.io/site-inscription-ascy/" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">Inscrire quelqu'un</a>
         <button type="button" class="secondaire" id="btn-modifier-inscrit" hidden>Modifier ou retirer un inscrit</button>
       </div>
-      <select id="filtre-inscrits" aria-label="Filtrer les inscrits par statut" style="margin-bottom: 10px">
-        <option value="">Tous les statuts</option>
-        <option>En attente de paiement</option>
-        <option>À vérifier</option>
-        <option>Inscription validée</option>
+      <select id="filtre-inscrits" aria-label="Filtrer les inscrits par situation" style="margin-bottom: 10px">
+        <option value="">Toutes les situations</option>
+        <option>Payé et licencié FFSU</option>
+        <option>Payé mais non inscrit</option>
+        <option>Paiement en attente</option>
       </select>
       <p class="aide" id="resume-inscrits" style="margin: 0 0 10px"></p>
       <p class="erreur" id="erreur-inscrits" role="alert" hidden></p>
+      <section class="panneau bloc-sport" id="bloc-payes-non-inscrits" hidden>
+        <h2 id="titre-payes-non-inscrits">Payé mais absent de la liste</h2>
+        <p class="aide" style="margin: 0 0 10px">Cotisation payée sur HelloAsso, mais absent de la liste des inscrits.</p>
+        <div id="liste-payes-non-inscrits"></div>
+      </section>
       <div id="liste-inscrits"></div>
       <section class="panneau bloc-sport" id="bloc-licences" hidden>
         <h2 id="titre-licences">Licenciés FFSU</h2>
@@ -1334,7 +1339,7 @@
     { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
     { vue: 'subventions', droit: 'bilan', titre: 'Les subventions', texte: ['Indique l\'organisme, le projet, la période et le montant. Choisis un événement pour ne garder que ses opérations, puis enregistre le dossier en PDF. Les informations saisies ne sont pas conservées.'] },
     { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
-    { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur statut et leur mail. Le filtre garde un seul statut. « Inscrire quelqu\'un » ouvre le site d\'inscription. Avec l\'autorisation, « Modifier ou retirer un inscrit » demande l\'étudiant, puis permet de changer ses sports ou de supprimer son inscription. Les statuts se changent dans la feuille d\'inscriptions.', 'En bas, « Licenciés FFSU » reprend les licences relevées sur MySport et indique si chacun a payé sa cotisation sur HelloAsso. Le filtre « À valider sur MySport » montre les licences en attente déjà payées.'] },
+    { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur situation et leur mail : ✅ payé et licencié FFSU, 💶 payé mais non inscrit (pas de licence FFSU), ⏳ paiement en attente. Le filtre garde une seule situation, et le bloc « Payé mais absent de la liste » montre ceux qui ont payé sur HelloAsso sans être dans les inscrits. « Inscrire quelqu\'un » ouvre le site d\'inscription. Avec l\'autorisation, « Modifier ou retirer un inscrit » demande l\'étudiant, puis permet de changer ses sports ou de supprimer son inscription. Les statuts se changent dans la feuille d\'inscriptions.', 'En bas, « Licenciés FFSU » reprend les licences relevées sur MySport et indique si chacun a payé sa cotisation sur HelloAsso. Le filtre « À valider sur MySport » montre les licences en attente déjà payées.'] },
     { vue: 'recurrentes', admin: true, titre: 'Les saisies récurrentes', texte: ['Pour un montant qui revient chaque mois, comme les frais bancaires, indique le jour et le montant : la saisie s\'ajoute toute seule ce jour-là. « Arrêter » stoppe les prochaines sans toucher à celles déjà créées.'] },
     { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
     { vue: 'historique', admin: true, titre: 'L\'historique', texte: ['Il garde chaque ajout, modification, suppression et validation, avec son auteur et sa date, ainsi que les connexions et les tentatives refusées. Les lignes « À vérifier » sont des cas à contrôler.'] },
@@ -1903,6 +1908,7 @@
       etat.inscrits = r.inscrits;
       etat.sports = r.sports;
       etat.licences = r.licences || [];
+      etat.payesNonInscrits = r.payesNonInscrits || [];
       afficherInscrits();
       afficherLicences();
     } catch (err) {
@@ -1971,14 +1977,33 @@
     }
   }
 
+  // Payé = inscription validée ou cotisation trouvée sur HelloAsso ; inscrit = licence FFSU trouvée
+  function situation(i) {
+    if (!i.paye) return 'Paiement en attente';
+    return i.licence ? 'Payé et licencié FFSU' : 'Payé mais non inscrit';
+  }
+
+  const PICTO_SITUATION = { 'Payé et licencié FFSU': '✅', 'Payé mais non inscrit': '💶', 'Paiement en attente': '⏳' };
+
   function afficherInscrits() {
     const filtre = $('filtre-inscrits').value;
-    const valides = etat.inscrits.filter(i => i.statut === 'Inscription validée').length;
-    $('resume-inscrits').textContent = 'Inscrits : ' + etat.inscrits.length + ' · Validés : ' + valides;
+    // Les payeurs HelloAsso absents de la liste comptent aussi, avec leur licence FFSU ou non
+    const horsListe = (etat.payesNonInscrits || []).map(p => ({ ...p, paye: true }));
+    const compte = s => etat.inscrits.concat(horsListe).filter(i => situation(i) === s).length;
+    $('resume-inscrits').textContent = 'Inscrits : ' + etat.inscrits.length
+      + ' · Payé et licencié FFSU : ' + compte('Payé et licencié FFSU')
+      + ' · Payé mais non inscrit : ' + compte('Payé mais non inscrit')
+      + ' · Paiement en attente : ' + compte('Paiement en attente');
     $('btn-modifier-inscrit').hidden = !peut('inscritsModifier');
+    const horsListeVus = horsListe.filter(p => !filtre || situation(p) === filtre);
+    $('bloc-payes-non-inscrits').hidden = !horsListeVus.length;
+    $('titre-payes-non-inscrits').textContent = 'Payé mais absent de la liste (' + horsListeVus.length + ')';
+    $('liste-payes-non-inscrits').replaceChildren(...horsListeVus.map(p => el('div', { className: 'ligne-histo' },
+      el('strong', { textContent: p.prenom + ' ' + p.nom }),
+      el('small', { textContent: PICTO_SITUATION[situation(p)] + ' ' + situation(p) }))));
     // Un étudiant apparaît dans chacun de ses sports
     const parSport = {};
-    etat.inscrits.filter(i => !filtre || i.statut === filtre).forEach(i => {
+    etat.inscrits.filter(i => !filtre || situation(i) === filtre).forEach(i => {
       i.sports.forEach(s => { (parSport[s] = parSport[s] || []).push(i); });
     });
     const sports = Object.keys(parSport).sort((a, b) => a.localeCompare(b, 'fr'));
@@ -1987,7 +2012,8 @@
           el('h2', { textContent: s + ' (' + parSport[s].length + ')' }),
           ...parSport[s].slice().sort((a, b) => a.nom.localeCompare(b.nom, 'fr')).map(i => el('div', { className: 'ligne-histo' },
             el('strong', { textContent: i.prenom + ' ' + i.nom }),
-            el('small', { textContent: i.statut + (i.email ? ' · ' + i.email : '') })))))
+            el('small', { textContent: PICTO_SITUATION[situation(i)] + ' ' + situation(i)
+              + (!i.paye && !i.licence ? ' · pas de licence FFSU' : '') + (i.email ? ' · ' + i.email : '') })))))
       : [el('p', { className: 'vide', textContent: 'Rien pour le moment.' })]));
   }
 
