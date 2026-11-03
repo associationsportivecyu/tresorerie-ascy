@@ -199,6 +199,8 @@
   .banque-tuiles strong { font-size: 24px; }
   .banque-bloc { margin: 16px 0 8px; font: 800 15px/1.2 var(--f); }
   .banque-haut { display: flex; justify-content: space-between; gap: 12px; }
+  .choix-banque { display: flex; align-items: center; gap: 7px; flex: 1 1 200px; margin: 0; font-size: 13px; cursor: pointer; }
+  .choix-banque input { flex: none; width: 17px; height: 17px; min-height: 0; margin: 0; padding: 0; accent-color: var(--jaune); }
   .ligne-histo { padding: 9px 12px; margin-bottom: 6px; font-size: 13.5px; overflow-wrap: anywhere; }
   .ligne-histo small { display: block; color: var(--doux); }
   .bloc-sport { margin-bottom: 12px; gap: 6px; }
@@ -346,7 +348,7 @@
     <section id="vue-banque" hidden>
       <div class="panneau form-banque">
         <h2>Rapprochement bancaire</h2>
-        <label>Relevé de la banque (fichier CSV)<input id="fichier-releve" type="file" accept=".csv,.txt,text/csv"></label>
+        <label>Relevé de la banque (PDF ou CSV)<input id="fichier-releve" type="file" accept=".pdf,.csv,.txt,application/pdf,text/csv"></label>
         <p class="aide">Le fichier est lu sur ton appareil : il n'est ni envoyé ni enregistré.</p>
         <p class="erreur" id="erreur-banque" role="alert" hidden></p>
       </div>
@@ -522,6 +524,9 @@
   const TESSERACT_EMPREINTE = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
   const JSPDF_URL ='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
   const JSPDF_EMPREINTE = 'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk';
+  const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  const PDFJS_EMPREINTE = 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e';
+  const PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   const AUTOTABLE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
   const AUTOTABLE_EMPREINTE = 'sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3';
   const FORMAT_EUROS = '#,##0.00 [$€-40C];[Red]-#,##0.00 [$€-40C]';
@@ -1338,7 +1343,7 @@
     ] },
     { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
     { vue: 'subventions', droit: 'bilan', titre: 'Les subventions', texte: ['Indique l\'organisme, le projet, la période et le montant. Choisis un événement pour ne garder que ses opérations, puis enregistre le dossier en PDF. Les informations saisies ne sont pas conservées.'] },
-    { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en CSV. Le site compare chaque ligne aux saisies, et « Créer la saisie » remplit le formulaire pour une opération oubliée. Le fichier n\'est ni envoyé ni enregistré.'] },
+    { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en PDF ou en CSV. Le site compare chaque ligne aux saisies : « Ajouter les saisies cochées » enregistre d\'un coup les opérations oubliées, et « Créer la saisie » ouvre le formulaire pour une seule. Le fichier n\'est ni envoyé ni enregistré.'] },
     { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur situation et leur mail : ✅ payé et licencié FFSU, 💶 payé mais non inscrit (pas de licence FFSU), ⏳ paiement en attente. Le filtre garde une seule situation, et le bloc « Payé mais absent de la liste » montre ceux qui ont payé sur HelloAsso sans être dans les inscrits. « Inscrire quelqu\'un » ouvre le site d\'inscription. Avec l\'autorisation, « Modifier ou retirer un inscrit » demande l\'étudiant, puis permet de changer ses sports ou de supprimer son inscription. Les statuts se changent dans la feuille d\'inscriptions.', 'En bas, « Licenciés FFSU » reprend les licences relevées sur MySport et indique si chacun a payé sa cotisation sur HelloAsso. Le filtre « À valider sur MySport » montre les licences en attente déjà payées.'] },
     { vue: 'recurrentes', admin: true, titre: 'Les saisies récurrentes', texte: ['Pour un montant qui revient chaque mois, comme les frais bancaires, indique le jour et le montant : la saisie s\'ajoute toute seule ce jour-là. « Arrêter » stoppe les prochaines sans toucher à celles déjà créées.'] },
     { vue: 'acces', admin: true, titre: 'Les accès', texte: ['Ajoute une personne avec son adresse Google. Pour chaque membre, les cases choisissent ce qu\'il peut voir et faire. Un trésorier a toutes les autorisations.'] },
@@ -1463,6 +1468,106 @@
     return operations.sort((a, b) => a.date.localeCompare(b.date));
   }
 
+  /** Le texte de chaque page, rangé en lignes de haut en bas, chaque morceau avec sa position. */
+  async function lirePdf(octets) {
+    if (!etat.pdfjs) {
+      etat.pdfjs = chargerScript(PDFJS_URL, PDFJS_EMPREINTE).then(() => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+        return window.pdfjsLib;
+      });
+      etat.pdfjs.catch(() => { etat.pdfjs = null; });
+    }
+    const doc = await (await etat.pdfjs).getDocument({ data: new Uint8Array(octets) }).promise;
+    const pages = [];
+    for (let p = 1; p <= doc.numPages; p++) {
+      const parY = {};
+      (await (await doc.getPage(p)).getTextContent()).items.filter(i => i.str.trim()).forEach(i => {
+        const y = Math.round(i.transform[5]);
+        (parY[y] = parY[y] || []).push({ x: i.transform[4], fin: i.transform[4] + i.width, texte: i.str.trim() });
+      });
+      pages.push(Object.keys(parY).sort((a, b) => b - a).map(y => parY[y].sort((a, b) => a.x - b.x)));
+    }
+    return pages;
+  }
+
+  const OPERATION_PDF = /^(\d{2})\.(\d{2})\.(\d{2}) (.*?) ?\d{2}\.\d{2}\.\d{2} ((?:\d{1,3} )*\d{1,3},\d{2})$/;
+  const MONTANTS_PDF = /(?:\d{1,3} )*\d{1,3},\d{2}/g;
+
+  /**
+   * Relevé PDF de la BNP : une opération commence par sa date comptable (jj.mm.aa), son libellé continue
+   * sur les lignes suivantes jusqu'au « Sous total », et son montant est dans la colonne Débit ou Crédit.
+   */
+  function analyserRelevePdf(pages) {
+    const operations = [];
+    let total = null;
+    pages.forEach(lignes => {
+      const entete = lignes.findIndex(l => l.some(i => /^C?REDIT$/.test(i.texte)));
+      if (entete === -1) return;
+      const colonneCredit = lignes[entete].find(i => /^C?REDIT$/.test(i.texte)).x - 12;
+      let rubrique = '';
+      let courante = null;
+      for (const l of lignes.slice(entete + 1)) {
+        const texte = l.map(i => i.texte).join(' ').replace(/\s+/g, ' ');
+        if (/^TOTAL DES OPERATIONS/i.test(texte)) {
+          total = (texte.match(MONTANTS_PDF) || []).map(m => Math.round(montantReleve(m) * 100));
+          break;
+        }
+        if (/^Sous total/i.test(texte)) { courante = null; continue; }
+        const m = texte.match(OPERATION_PDF);
+        if (m) {
+          const centimesOp = Math.round(montantReleve(m[5]) * 100);
+          courante = {
+            date: '20' + m[3] + '-' + m[2] + '-' + m[1],
+            debut: m[4],
+            suite: [],
+            rubrique,
+            centimes: l[l.length - 1].fin >= colonneCredit ? centimesOp : -centimesOp
+          };
+          operations.push(courante);
+        } else if (courante) {
+          if (!/^\/REF/i.test(texte)) courante.suite.push(texte);
+        } else if (!texte.startsWith('-')) {
+          rubrique = texte;
+        }
+      }
+    });
+    if (!operations.length) throw new Error('Aucune opération lisible dans ce PDF. Il faut un relevé de compte de la banque.');
+    const lues = operations.map(o => ({
+      date: o.date,
+      rubrique: o.rubrique,
+      centimes: o.centimes,
+      libelle: [o.debut, ...o.suite].join(' ')
+        .replace(/^DU \d{6} /, '').replace(/^\*/, '').replace(/\/MOTIF /g, '').replace(/ ?\/BEN /g, ' – ')
+        .replace(/\s+/g, ' ').trim()
+    }));
+    etat.controleReleve = controlerTotal(lues, total);
+    return lues.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /** Compare les opérations lues au total imprimé en bas du relevé. */
+  function controlerTotal(operations, total) {
+    if (!total || total.length < 2) return 'Le total du relevé n\'a pas été trouvé : vérifie que toutes les opérations sont là.';
+    const debits = operations.filter(o => o.centimes < 0).reduce((s, o) => s - o.centimes, 0);
+    const credits = operations.filter(o => o.centimes > 0).reduce((s, o) => s + o.centimes, 0);
+    if (debits === total[0] && credits === total[1]) return '';
+    return 'Attention : les opérations lues (débit ' + euros.format(debits / 100) + ', crédit ' + euros.format(credits / 100)
+      + ') ne correspondent pas au total du relevé (débit ' + euros.format(total[0] / 100) + ', crédit ' + euros.format(total[1] / 100) + ').';
+  }
+
+  const RETRAIT = /retrait/;
+
+  /** Catégorie et moyen devinés depuis le libellé, à corriger ensuite si besoin. */
+  function saisieDepuisOperation(o) {
+    const l = sansAccents(o.libelle + ' ' + (o.rubrique || ''));
+    const type = o.centimes > 0 ? 'recette' : 'depense';
+    let categorie = type === 'recette' ? 'Autre recette' : 'Autre dépense';
+    if (type === 'depense' && /commission|frais|agios|cotisation.*carte/.test(l)) categorie = 'Frais bancaires';
+    else if (type === 'depense' && /decathlon|intersport|go sport|sport 2000/.test(l)) categorie = 'Matériel';
+    const moyen = /cheque|\bchq\b/.test(l) ? 'Chèque'
+      : /\bvir\b|virement|prlv|prelevement|commission|frais|agios/.test(l) ? 'Virement' : 'Carte';
+    return { type, montant: Math.abs(o.centimes) / 100, date: o.date, categorie, moyen, description: o.libelle.slice(0, 200), evenement: '' };
+  }
+
   /** Associe chaque opération à la saisie de même montant et de date la plus proche, une seule fois. */
   function rapprocher(operations, saisies) {
     const ecartJours = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
@@ -1500,7 +1605,7 @@
   }
 
   function boutonCreerSaisie(o) {
-    return el('div', { className: 'actions' }, el('button', {
+    return el('button', {
       className: 'secondaire',
       textContent: 'Créer la saisie',
       onclick: () => ouvrirSaisie(null, {
@@ -1509,7 +1614,41 @@
         date: o.date,
         description: o.libelle.slice(0, 200)
       })
-    }));
+    });
+  }
+
+  /** Une case à cocher par opération : un retrait d'espèces n'est pas une dépense, il part décoché. */
+  function ligneASaisir(o) {
+    const s = saisieDepuisOperation(o);
+    const retrait = RETRAIT.test(sansAccents((o.rubrique || '') + ' ' + o.libelle));
+    const coche = el('input', { type: 'checkbox', checked: !retrait, className: 'coche-banque' });
+    coche.operation = o;
+    return ligneOperation(o, el('div', { className: 'actions' },
+      el('label', { className: 'choix-banque' }, coche,
+        retrait ? 'Retrait d\'espèces : à ajouter seulement s\'il n\'est pas versé en caisse' : s.categorie + ' · ' + s.moyen),
+      boutonCreerSaisie(o)));
+  }
+
+  async function ajouterOperationsCochees(bouton) {
+    const cochees = [...document.querySelectorAll('.coche-banque:checked')].map(c => c.operation);
+    if (!cochees.length) return;
+    if (!confirm('Ajouter ' + cochees.length + ' saisie' + (cochees.length > 1 ? 's' : '') + ' depuis le relevé ? Catégorie et moyen sont devinés : tu pourras les corriger ensuite.')) return;
+    bouton.disabled = true;
+    $('erreur-banque').hidden = true;
+    const refusees = [];
+    for (const [n, o] of cochees.entries()) {
+      bouton.textContent = 'Ajout ' + (n + 1) + ' sur ' + cochees.length + '…';
+      try {
+        await api('ajouter', { saisie: saisieDepuisOperation(o) });
+      } catch (err) {
+        refusees.push(o.libelle + ' : ' + err.message);
+      }
+    }
+    await charger(); // relance aussi le rapprochement, où les saisies ajoutées passent en « Rapprochées »
+    if (refusees.length) {
+      $('erreur-banque').textContent = refusees.length + ' opération(s) non ajoutée(s). ' + refusees.join(' · ');
+      $('erreur-banque').hidden = false;
+    }
   }
 
   function afficherRapprochement() {
@@ -1518,12 +1657,21 @@
     const tuile = (titre, nombre, couleur) => el('div', { className: 'tuile', style: '--c: var(' + couleur + ')' },
       el('span', { textContent: titre }), el('strong', { textContent: nombre }));
     const bloc = (titre, lignes) => (lignes.length ? [el('h3', { className: 'banque-bloc', textContent: titre + ' (' + lignes.length + ')' }), ...lignes] : []);
+    const toutAjouter = r.aSaisir.length
+      ? [el('div', { className: 'actions' }, el('button', {
+          className: 'principal',
+          textContent: 'Ajouter les saisies cochées',
+          onclick: e => ajouterOperationsCochees(e.target)
+        }))]
+      : [];
     $('resultat-banque').replaceChildren(
+      ...(etat.controleReleve ? [el('p', { className: 'erreur', role: 'alert', textContent: etat.controleReleve })] : []),
       el('div', { className: 'banque-tuiles' },
         tuile('Rapprochées', r.rapprochees.length, '--vert'),
         tuile('À saisir', r.aSaisir.length, '--rouge'),
         tuile('Pas en banque', r.sansLigne.length, '--jaune')),
-      ...bloc('En banque, sans saisie', r.aSaisir.map(o => ligneOperation(o, boutonCreerSaisie(o)))),
+      ...bloc('En banque, sans saisie', r.aSaisir.map(ligneASaisir)),
+      ...toutAjouter,
       ...bloc('Saisies absentes du relevé', r.sansLigne.map(s => ligneBanque(s.description,
         (s.type === 'recette' ? '' : '-') + euros.format(s.montant), [dateCourte(s.date), s.moyen, s.auteur].join(' · ')))),
       ...bloc('Versements HelloAsso, à ne pas saisir', r.helloasso.map(o => ligneOperation(o))),
@@ -1534,9 +1682,13 @@
     if (!fichier) return;
     $('erreur-banque').hidden = true;
     etat.releve = null;
+    etat.controleReleve = '';
     $('resultat-banque').replaceChildren();
     try {
-      etat.releve = analyserReleve(decoderReleve(await fichier.arrayBuffer()));
+      const octets = await fichier.arrayBuffer();
+      etat.releve = fichier.type === 'application/pdf' || /\.pdf$/i.test(fichier.name)
+        ? analyserRelevePdf(await lirePdf(octets))
+        : analyserReleve(decoderReleve(octets));
       afficherRapprochement();
     } catch (err) {
       $('erreur-banque').textContent = err.message;
