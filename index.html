@@ -40,7 +40,7 @@
       linear-gradient(160deg, var(--bleu-clair), var(--bleu) 45%, #1a52d4);
     background-attachment: fixed;
   }
-  button, input, select { font: inherit; color: inherit; }
+  button, input, select, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; }
   :focus-visible { outline: 3px solid var(--jaune); outline-offset: 2px; }
   h1, h2 { margin: 0; line-height: 1.2; }
@@ -160,6 +160,36 @@
   .form-evenement label { margin: 0; }
   .form-evenement .pied { margin: 0; }
   .evenement { background: color-mix(in srgb, var(--marine) 94%, transparent); border-left: 6px solid var(--c, var(--violet)); padding: 13px 14px; margin-bottom: 9px; }
+  .barre-demande { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 14px 0; }
+  textarea { display: block; width: 100%; min-height: 96px; margin-top: 4px; padding: 9px 11px; background: rgba(255,255,255,.07); border: 1.5px solid var(--trait); border-radius: 6px; font-weight: 500; resize: vertical; }
+  textarea:focus { outline: none; border-color: var(--jaune); box-shadow: 0 0 0 3px rgba(245,197,24,.3); }
+  .form-demande h3 { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--trait); font: 900 14px/1.2 var(--f); text-transform: uppercase; letter-spacing: .04em; color: var(--jaune); }
+  .form-demande h3, .form-demande .large { grid-column: 1 / -1; }
+  .form-demande .case { display: flex; align-items: center; gap: 9px; font-weight: 600; cursor: pointer; }
+  .form-demande .case input { flex: none; width: 19px; height: 19px; min-height: 0; margin: 0; padding: 0; accent-color: var(--jaune); }
+  .form-demande .cases { display: flex; flex-wrap: wrap; gap: 8px 18px; border: 0; padding: 0; margin: 0; }
+  .form-demande .cases legend { padding: 0; margin-bottom: 6px; font-size: 14px; font-weight: 700; }
+  .bloc-budget { display: grid; gap: 7px; }
+  .bloc-budget h4 { margin: 0; font-size: 14px; font-weight: 800; }
+  .ligne-budget { display: grid; grid-template-columns: minmax(0, 1fr) 120px 44px; gap: 7px; align-items: center; }
+  .ligne-budget > span { font-size: 14px; font-weight: 600; }
+  .ligne-budget input { text-align: left; }
+  .ligne-budget input[inputmode=decimal] { text-align: right; }
+  .ligne-budget button { min-height: 44px; padding: 0; }
+  .bloc-budget .total { margin: 0; display: flex; justify-content: space-between; gap: 12px; padding: 9px 11px; background: rgba(255,255,255,.1); border-radius: 4px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .bloc-budget > .secondaire { justify-self: start; }
+  .signature { display: grid; gap: 6px; justify-items: start; font-size: 14px; font-weight: 700; }
+  .panneau-signature, .panneau-subvention { margin-bottom: 14px; }
+  .panneau-subvention .large { grid-column: 1 / -1; }
+  #rapport-resume { padding: 12px 14px; background: rgba(255,255,255,.07); border-left: 6px solid var(--violet); border-radius: 4px; }
+  #rapport-resume h4 { margin: 0; font-size: 14px; font-weight: 800; }
+  #rapport-resume .attention { margin: 8px 0 0; color: var(--rouge-clair); font-size: 13px; font-weight: 700; }
+  .signature canvas { width: 100%; max-width: 450px; aspect-ratio: 5 / 2; background: #fff; border: 1.5px solid var(--trait); border-radius: 6px; touch-action: none; cursor: crosshair; }
+  .equilibre { margin: 0; font-size: 14px; font-weight: 700; }
+  .equilibre.ok { color: var(--vert); }
+  .equilibre.ecart { color: var(--rouge-clair); }
+  #demande-resultat, #rapport-resultat { margin-bottom: 14px; --c: var(--vert); }
+  #demande-resultat ul, #rapport-resultat ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
   .evenement h2 { font-size: 15.5px; font-weight: 800; overflow-wrap: anywhere; }
   .budget { display: grid; grid-template-columns: auto repeat(3, 1fr); gap: 4px 10px; margin-top: 9px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
   .budget > * { min-width: 0; }
@@ -214,6 +244,8 @@
     .filtres .recherche { grid-column: 1 / -1; }
     .filtres .secondaire { grid-column: 1 / -1; }
     .form-acces, .form-evenement { grid-template-columns: 1fr; }
+    .barre-demande .principal { width: 100%; }
+    .ligne-budget { grid-template-columns: minmax(0, 1fr) 96px 44px; }
     .acces { grid-template-columns: 1fr 130px; }
     .acces button { grid-column: 1 / -1; }
     .ajouter { left: 16px; right: 16px; }
@@ -320,13 +352,214 @@
         </div>
       </form>
       <div id="liste-evenements" aria-live="polite"></div>
+      <div class="barre-demande">
+        <button type="button" class="principal" id="btn-demande">Faire une demande de subvention</button>
+      </div>
+    </section>
+
+    <section id="vue-rapport" hidden>
+      <form class="panneau form-evenement form-demande" id="form-rapport" novalidate>
+        <h2>Bilan d'une subvention FSDIE</h2>
+        <p class="aide large">Le site reprend le bilan financier de l'événement (chaque dépense et recette réelle) et les informations de ta demande de subvention. Vérifie, complète, puis remplis le rapport officiel de CY Cergy Paris Université.</p>
+        <label class="large">Événement<select name="evenement"></select>
+          <span class="aide" id="rapport-source">Choisir un événement remplace ce qui est saisi ci-dessous.</span>
+        </label>
+        <div class="large" id="rapport-resume" hidden></div>
+
+        <h3>Le projet</h3>
+        <label class="large">Intitulé du projet<input name="intitule" maxlength="90" autocomplete="off"></label>
+        <label>Montant accordé<input name="montantAccorde" maxlength="30" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
+        <label>Commission vie étudiante du mois de<select name="commission"></select>
+          <span class="aide">Celle qui a accordé la subvention, d'après le calendrier CVE.</span>
+        </label>
+        <label>Date(s) de réalisation<input name="dateRealisation" maxlength="60" autocomplete="off"></label>
+        <label>Lieu(x) de la manifestation<input name="lieu" maxlength="110" autocomplete="off"></label>
+        <label class="large">Public touché<textarea name="publicTouche" maxlength="450" rows="3"></textarea>
+          <span class="aide">Étudiants ou non, habitués, partenaires, professionnels…</span>
+        </label>
+
+        <h3>Personne référente</h3>
+        <label>Nom et prénom<input name="referentNom" maxlength="80" autocomplete="name"></label>
+        <label>Qualité ou fonction<input name="referentQualite" maxlength="60" autocomplete="off"></label>
+        <label>Adresse e-mail<input name="referentEmail" type="email" maxlength="80" autocomplete="email"></label>
+        <label>Téléphone<input name="referentTel" type="tel" maxlength="30" autocomplete="tel"></label>
+
+        <h3>Analyse du projet</h3>
+        <label class="large">Comment s'est déroulé le projet ?<textarea name="analyse" maxlength="1100" rows="6"></textarea>
+          <span class="aide">Déroulement, changements, objectifs atteints, difficultés, perspectives, impressions. Cette partie est à écrire toi-même.</span>
+        </label>
+
+        <h3>Bilan financier réel</h3>
+        <div class="bloc-budget large">
+          <h4>Dépenses (une ligne par facture)</h4>
+          <div class="bloc-budget" id="rapport-depenses"></div>
+          <button type="button" class="secondaire" id="btn-ajouter-depense-rapport">+ Ajouter une dépense</button>
+          <p class="total"><span>Total des dépenses</span><span id="rapport-total-depenses"></span></p>
+        </div>
+        <div class="bloc-budget large">
+          <h4>Financements</h4>
+          <div class="bloc-budget" id="rapport-financements"></div>
+          <div class="bloc-budget" id="rapport-autres"></div>
+          <button type="button" class="secondaire" id="btn-ajouter-financement-rapport">+ Ajouter un autre financement</button>
+          <p class="total"><span>Total des financements</span><span id="rapport-total-financements"></span></p>
+          <p class="equilibre" id="rapport-equilibre" aria-live="polite"></p>
+        </div>
+        <label>Reliquat à déclarer (€)<input name="reliquat" maxlength="14" inputmode="decimal" autocomplete="off" placeholder="0,00">
+          <span class="aide">Seulement si tu as dépensé moins que la subvention reçue.</span>
+        </label>
+
+        <h3>Certification et signature</h3>
+        <label>Je soussigné(e)<input name="porteur" maxlength="60" autocomplete="name"></label>
+        <label>Date<input name="dateSignature" type="date"></label>
+        <div class="large signature">
+          <span id="titre-signature-rapport">Signature du porteur de projet ou du président</span>
+          <canvas id="rapport-signature" width="900" height="360" role="img" aria-labelledby="titre-signature-rapport"></canvas>
+          <span class="aide">La même signature que pour la demande et le bilan. Laisse vide pour signer le PDF à la main.</span>
+          <button type="button" class="secondaire" id="btn-effacer-signature-rapport">Effacer la signature</button>
+        </div>
+        <p class="aide large">Ce que tu saisis reste sur cet appareil : rien n'est envoyé.</p>
+        <p class="erreur" id="erreur-rapport" role="alert" hidden></p>
+        <div class="pied">
+          <button type="button" class="secondaire" id="btn-retour-rapport">Retour</button>
+          <button type="button" class="secondaire danger" id="btn-effacer-rapport">Tout effacer</button>
+          <button class="principal" id="btn-remplir-rapport">Remplir le bilan</button>
+        </div>
+      </form>
+      <div class="panneau" id="rapport-resultat" aria-live="polite" hidden>
+        <h2>Bilan rempli</h2>
+        <p class="aide" id="rapport-bilan"></p>
+        <ul>
+          <li id="rapport-rappel-signature">Relis le PDF, puis signe-le en dernière page.</li>
+          <li>Fusionne toutes les factures avec le rapport, en un seul PDF.</li>
+          <li>Envoie le tout à vie.asso@cyu.fr.</li>
+        </ul>
+        <div class="pied"><button type="button" class="principal" id="btn-telecharger-rapport">Télécharger le bilan</button></div>
+      </div>
+    </section>
+
+    <section id="vue-demande" hidden>
+      <form class="panneau form-evenement form-demande" id="form-demande" novalidate>
+        <h2>Demande de subvention FSDIE</h2>
+        <p class="aide large" id="demande-echeance"></p>
+        <label class="large">Partir d'un événement<select name="evenement"></select>
+          <span class="aide" id="demande-prevu">Reprend le nom de l'événement choisi.</span>
+        </label>
+
+        <h3>Le projet</h3>
+        <label class="large">Nom du projet<input name="nomProjet" maxlength="120" autocomplete="off"></label>
+        <label>Date du projet<input name="dateProjet" maxlength="60" autocomplete="off" placeholder="12 au 14 mars 2027"></label>
+        <label class="case"><input type="checkbox" name="nonTutore">Je certifie sur l'honneur que ce n'est pas un projet tutoré</label>
+
+        <h3>Personne référente</h3>
+        <label>Nom et prénom<input name="referentNom" maxlength="80" autocomplete="name"></label>
+        <label>Qualité ou fonction<input name="referentQualite" maxlength="80" autocomplete="off" placeholder="Trésorier"></label>
+        <label>Adresse e-mail<input name="referentEmail" type="email" maxlength="80" autocomplete="email"></label>
+        <label>Téléphone<input name="referentTel" type="tel" maxlength="30" autocomplete="tel"></label>
+
+        <h3>L'association</h3>
+        <label>Nom de l'association<input name="assoNom" maxlength="90" autocomplete="off"></label>
+        <label>UFR ou site<input name="assoUfr" maxlength="80" autocomplete="off"></label>
+        <label class="large">Présentation de l'association (mission)<textarea name="assoPresentation" maxlength="350" rows="3"></textarea></label>
+        <label class="large">Adresse<input name="assoAdresse" maxlength="100" autocomplete="off"></label>
+        <label class="large">Contact (téléphone et e-mail)<input name="assoContact" maxlength="90" autocomplete="off"></label>
+
+        <h3>Présentation du projet</h3>
+        <label class="large">Objectif 1<input name="objectif1" maxlength="130" autocomplete="off"></label>
+        <label class="large">Objectif 2<input name="objectif2" maxlength="130" autocomplete="off"></label>
+        <label class="large">Objectif 3<input name="objectif3" maxlength="130" autocomplete="off"></label>
+        <label class="large">Descriptif synthétique du projet<textarea name="descriptif" maxlength="1400" rows="6"></textarea>
+          <span class="aide">Qui êtes-vous, quel est le but du projet, quels moyens, quels partenaires ?</span>
+        </label>
+        <label class="large">Le projet fait-il partie d'un projet plus large ?<textarea name="projetGlobal" maxlength="700" rows="3"></textarea>
+          <span class="aide">Semaine thématique, cycle de conférences… Laisse vide sinon.</span>
+        </label>
+        <fieldset class="cases large">
+          <legend>Public ciblé</legend>
+          <label class="case"><input type="checkbox" name="publicCyu">Étudiants CYU</label>
+          <label class="case"><input type="checkbox" name="publicExterieurs">Étudiants extérieurs</label>
+          <label class="case"><input type="checkbox" name="publicTous">Tout public</label>
+          <label class="case"><input type="checkbox" name="publicAutres">Autres</label>
+        </fieldset>
+        <label>Nombre de personnes attendues<input name="nbPersonnes" maxlength="12" inputmode="numeric" autocomplete="off"></label>
+
+        <h3>Besoins logistiques</h3>
+        <label class="case large"><input type="checkbox" name="surSite">Sur un site de CYU</label>
+        <label class="large">Espaces demandés (salles, MDE, extérieur)<input name="espaces" maxlength="60" autocomplete="off"></label>
+        <label class="case large"><input type="checkbox" name="enExterieur">En extérieur</label>
+        <label class="large">Adresse du lieu extérieur<input name="adresseExterieure" maxlength="90" autocomplete="off"></label>
+        <label class="large">Matériel nécessaire<textarea name="materiel" maxlength="500" rows="3"></textarea>
+          <span class="aide">Nombre de chaises, tables, barnums, écrans, micros…</span>
+        </label>
+        <label class="large">Supports de communication<textarea name="communication" maxlength="550" rows="3"></textarea></label>
+
+        <h3>Budget prévisionnel</h3>
+        <div class="bloc-budget large">
+          <h4>Dépenses</h4>
+          <div class="bloc-budget" id="demande-depenses"></div>
+          <button type="button" class="secondaire" id="btn-ajouter-depense">+ Ajouter une dépense</button>
+          <p class="total"><span>Total des dépenses</span><span id="demande-total-depenses"></span></p>
+        </div>
+        <div class="bloc-budget large">
+          <h4>Financements</h4>
+          <div class="bloc-budget" id="demande-financements"></div>
+          <div class="bloc-budget" id="demande-autres"></div>
+          <button type="button" class="secondaire" id="btn-ajouter-financement">+ Ajouter un autre financement</button>
+          <p class="total"><span>Total des financements</span><span id="demande-total-financements"></span></p>
+          <p class="equilibre" id="demande-equilibre" aria-live="polite"></p>
+        </div>
+
+        <h3>Pièces jointes et signature</h3>
+        <fieldset class="cases large">
+          <legend>Pièces déjà prêtes</legend>
+          <label class="case"><input type="checkbox" name="pieceDemande">Demande remplie et signée</label>
+          <label class="case"><input type="checkbox" name="pieceDevis">Devis de chaque dépense</label>
+          <label class="case"><input type="checkbox" name="pieceRib">RIB</label>
+          <label class="case"><input type="checkbox" name="pieceAutres">Autres documents</label>
+        </fieldset>
+        <label>Date de signature<input name="dateSignature" type="date"></label>
+        <div class="large signature">
+          <span id="titre-signature">Signature</span>
+          <canvas id="demande-signature" width="900" height="360" role="img" aria-labelledby="titre-signature"></canvas>
+          <span class="aide">Signe avec le doigt, un stylet ou la souris. Laisse vide pour signer le PDF à la main.</span>
+          <button type="button" class="secondaire" id="btn-effacer-signature">Effacer la signature</button>
+        </div>
+        <p class="aide large">Ce que tu saisis, signature comprise, reste sur cet appareil pour reprendre plus tard : rien n'est envoyé.</p>
+        <p class="erreur" id="erreur-demande" role="alert" hidden></p>
+        <div class="pied">
+          <button type="button" class="secondaire" id="btn-retour-demande">Retour</button>
+          <button type="button" class="secondaire danger" id="btn-effacer-demande">Tout effacer</button>
+          <button class="principal" id="btn-remplir-demande">Remplir le formulaire</button>
+        </div>
+      </form>
+      <div class="panneau" id="demande-resultat" aria-live="polite" hidden>
+        <h2>Formulaire rempli</h2>
+        <p class="aide" id="demande-bilan"></p>
+        <ul>
+          <li id="demande-rappel-signature">Relis le PDF, puis signe-le en dernière page.</li>
+          <li>Joins un devis pour chaque dépense, le RIB et les documents utiles.</li>
+          <li>Envoie le tout à vie.asso@cyu.fr.</li>
+        </ul>
+        <div class="pied"><button type="button" class="principal" id="btn-telecharger-demande">Télécharger le formulaire</button></div>
+      </div>
     </section>
 
     <section id="vue-bilan" hidden>
+      <div class="panneau form-evenement panneau-subvention">
+        <h2>Bilan d'une subvention FSDIE</h2>
+        <p class="aide large">Après un événement subventionné, choisis-le : le site reprend son bilan financier (dépenses et recettes réelles, comparées au prévu) pour remplir le rapport officiel de CY Cergy Paris Université.</p>
+        <label class="large">Événement<select id="bilan-evenement"></select></label>
+        <div class="pied"><button type="button" class="principal" id="btn-rapport">Faire le bilan d'une subvention</button></div>
+      </div>
       <div class="filtres filtres-bilan">
         <label>Du<input id="bilan-debut" type="date"></label>
         <label>Au<input id="bilan-fin" type="date"></label>
         <button class="principal" id="btn-bilan">Enregistrer en PDF</button>
+      </div>
+      <div class="panneau signature panneau-signature">
+        <span id="titre-signature-bilan">Signature du bilan</span>
+        <canvas id="bilan-signature" width="900" height="360" role="img" aria-labelledby="titre-signature-bilan"></canvas>
+        <span class="aide">Signe avec le doigt, un stylet ou la souris : la signature s'ajoute en bas du PDF. C'est la même que pour la demande de subvention, gardée sur cet appareil. Laisse vide pour signer à la main.</span>
+        <button type="button" class="secondaire" id="btn-effacer-signature-bilan">Effacer la signature</button>
       </div>
       <article class="feuille" id="bilan"></article>
     </section>
@@ -529,7 +762,10 @@
   const PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   const AUTOTABLE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
   const AUTOTABLE_EMPREINTE = 'sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3';
-  const FORMAT_EUROS = '#,##0.00 [$€-40C];[Red]-#,##0.00 [$€-40C]';
+  const PDFLIB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+  const PDFLIB_EMPREINTE = 'sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI';
+  const FORMULAIRE_FSDIE_URL = 'formulaire-subvention-fsdie.pdf';
+  const FORMAT_EUROS ='#,##0.00 [$€-40C];[Red]-#,##0.00 [$€-40C]';
   const SECTIONS_EXPORT = [
     { type: 'recette', titre: 'RECETTES', fonce: '166534', clair: 'DCFCE7', colonne: 3 },
     { type: 'depense', titre: 'DÉPENSES', fonce: '991B1B', clair: 'FEE2E2', colonne: 4 }
@@ -650,6 +886,7 @@
     if (peut('evenements')) afficherEvenements();
     if (peut('bilan')) {
       afficherBilan();
+      remplirChoixRapport();
       remplirChoixDossier();
       afficherDossier();
     }
@@ -1339,9 +1576,10 @@
     { vue: 'evenements', droit: 'evenements', titre: 'Les événements', liste: [
       'Indique le nom, un mot-clé et le budget prévu : l\'événement s\'ajoute au tableur.',
       'Chaque événement compare le prévu au réel, à partir des saisies qui lui sont reliées.',
-      'Une saisie sans événement choisi compte aussi si sa description contient le mot-clé.'
+      'Une saisie sans événement choisi compte aussi si sa description contient le mot-clé.',
+      '« Faire une demande de subvention » ouvre une page où tu indiques le projet, l\'association et le budget : le site remplit le formulaire FSDIE officiel et te propose de le télécharger. Tu peux signer au doigt en bas de la page. Il reste à l\'envoyer avec les devis et le RIB.'
     ] },
-    { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».'] },
+    { vue: 'bilan', droit: 'bilan', titre: 'Le bilan', texte: ['Choisis la période, puis appuie sur « Enregistrer en PDF » pour obtenir le bilan de l\'assemblée générale. Tu peux d\'abord le signer au doigt dans la zone « Signature du bilan ». Sur téléphone, choisis ensuite « Enregistrer dans Fichiers ».', 'Après un événement subventionné, choisis-le en haut de l\'onglet puis appuie sur « Faire le bilan d\'une subvention » : le site reprend le bilan financier de l\'événement et les informations de la demande pour remplir le rapport officiel. Écris l\'analyse du projet, puis joins les factures.'] },
     { vue: 'subventions', droit: 'bilan', titre: 'Les subventions', texte: ['Indique l\'organisme, le projet, la période et le montant. Choisis un événement pour ne garder que ses opérations, puis enregistre le dossier en PDF. Les informations saisies ne sont pas conservées.'] },
     { vue: 'banque', droit: 'banque', titre: 'La banque', texte: ['Importe le relevé de la banque en PDF ou en CSV. Le site compare chaque ligne aux saisies : « Ajouter les saisies cochées » enregistre d\'un coup les opérations oubliées, et « Créer la saisie » ouvre le formulaire pour une seule. Le fichier n\'est ni envoyé ni enregistré.'] },
     { vue: 'inscrits', droit: 'inscrits', titre: 'Les inscrits', texte: ['Retrouve les étudiants inscrits, classés par sport, avec leur situation et leur mail : ✅ payé et licencié FFSU, 💶 payé mais non inscrit (pas de licence FFSU), ⏳ paiement en attente. Le filtre garde une seule situation, et le bloc « Payé mais absent de la liste » montre ceux qui ont payé sur HelloAsso sans être dans les inscrits. « Inscrire quelqu\'un » ouvre le site d\'inscription. Avec l\'autorisation, « Modifier ou retirer un inscrit » demande l\'étudiant, puis permet de changer ses sports ou de supprimer son inscription. Les statuts se changent dans la feuille d\'inscriptions.', 'En bas, « Licenciés FFSU » reprend les licences relevées sur MySport et indique si chacun a payé sa cotisation sur HelloAsso. Le filtre « À valider sur MySport » montre les licences en attente déjà payées.'] },
@@ -1919,7 +2157,19 @@
 
     if (y > 275) { doc.addPage(); y = MARGE - 6; }
     doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(71, 80, 122);
-    doc.text(doc.splitTextToSize(textePdf(bilan.note), largeur - 2 * MARGE), MARGE, y + 8);
+    const note = doc.splitTextToSize(textePdf(bilan.note), largeur - 2 * MARGE);
+    doc.text(note, MARGE, y + 8);
+    if (bilan.signature) {
+      const CADRE = { largeur: 60, hauteur: 24 };
+      y += 8 + note.length * 4 + 6;
+      if (y + CADRE.hauteur + 6 > 290) { doc.addPage(); y = MARGE; }
+      const image = doc.getImageProperties(bilan.signature);
+      const echelle = Math.min(CADRE.largeur / image.width, CADRE.hauteur / image.height);
+      const gauche = largeur - MARGE - CADRE.largeur;
+      doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...MARINE);
+      doc.text('Signature', gauche, y);
+      doc.addImage(bilan.signature, 'PNG', gauche, y + 3, image.width * echelle, image.height * echelle);
+    }
     return doc;
   }
 
@@ -1960,14 +2210,714 @@
     }
   }
 
+  // ====== Demande de subvention FSDIE ======
+
+  const CLE_DEMANDE = 'tresorerie-ascy-demande';
+  /** Calendrier CVE 2026-2027 : dernier jour de dépôt, puis jour de la commission. */
+  const CALENDRIER_CVE = [['2026-09-30', '2026-10-09'], ['2026-11-09', '2026-11-18'], ['2027-01-13', '2027-01-22'], ['2027-03-03', '2027-03-12'], ['2027-04-15', '2027-04-23'], ['2027-05-26', '2027-06-04'], ['2027-06-23', '2027-07-02']];
+  /** Lignes imprimées dans le tableau « Comment on finance ? », dans l'ordre du PDF. */
+  const FINANCEMENTS_FSDIE = ['Participation de l\'association', 'Participation des étudiants', 'Subventions (FSDIE / CVEC)', 'Subventions autres', 'Subvention de l\'État', 'Communes', 'Reliquat FSDIE (si existant)'];
+  const RANG_FSDIE = 2;
+  const MAX_DEPENSES = 12;
+  const MAX_AUTRES = 6;
+  /** Nom du champ dans le PDF → nom du champ dans le formulaire du site. */
+  const CHAMPS_FSDIE = {
+    'Nom du projet': 'nomProjet', 'Date du projet': 'dateProjet',
+    'NOM prénom': 'referentNom', 'Qualité / fonction': 'referentQualite', 'Adresse Email': 'referentEmail', 'N° tél': 'referentTel',
+    'Nom de l\'association': 'assoNom', 'Présentation de l\'association': 'assoPresentation', 'Adresse de l\'association': 'assoAdresse', 'UFR / Site': 'assoUfr', 'Contact tel et mail': 'assoContact',
+    'Objectifs du projet 1': 'objectif1', 'Objectifs du projet 2': 'objectif2', 'Objectifs du projet 3': 'objectif3',
+    'Descriptif synthétique de votre projet': 'descriptif', 'projet inscrit plus conséquent': 'projetGlobal', 'Nombre de personnes attendues': 'nbPersonnes',
+    'Quels sites': 'espaces', 'adresse extérieure': 'adresseExterieure', 'Matériel nécessaire': 'materiel', 'quels supports de com': 'communication'
+  };
+  const CASES_FSDIE = {
+    'certifie honneur': 'nonTutore', 'Etudiant CYU': 'publicCyu', 'Etudiant extérieurs': 'publicExterieurs', 'Tout public': 'publicTous', 'Autres': 'publicAutres',
+    'Sur site': 'surSite', 'en extérieur': 'enExterieur',
+    'Check Box1': 'pieceDemande', 'Check Box2': 'pieceDevis', 'Check Box3': 'pieceRib', 'Check Box4': 'pieceAutres'
+  };
+
+  function erreurDemande(message) {
+    $('erreur-demande').textContent = message || '';
+    $('erreur-demande').hidden = !message;
+  }
+
+  /** Une ligne du budget : libellé imprimé dans le PDF, ou libellé libre avec un bouton pour la retirer. */
+  function ligneBudget(valeurs, libelleFixe, maj = majDemande) {
+    const montant = el('input', { name: 'montant', inputMode: 'decimal', autocomplete: 'off', placeholder: '0,00', value: valeurs.montant || '', ariaLabel: 'Montant en euros' });
+    if (libelleFixe) return el('div', { className: 'ligne-budget' }, el('span', { textContent: libelleFixe }), montant);
+    const ligne = el('div', { className: 'ligne-budget' },
+      el('input', { name: 'libelle', maxLength: 60, autocomplete: 'off', placeholder: 'Nature', value: valeurs.libelle || '', ariaLabel: 'Nature' }),
+      montant,
+      el('button', { type: 'button', className: 'secondaire', textContent: '×', ariaLabel: 'Retirer la ligne', onclick: () => { ligne.remove(); maj(); } }));
+    return ligne;
+  }
+
+  const lignesDemande = id => [...$(id).children].map(l => ({
+    libelle: l.querySelector('[name=libelle]')?.value.trim() || '',
+    montant: l.querySelector('[name=montant]').value.trim()
+  }));
+
+  function montantDemande(ligne) {
+    const m = montantReleve(ligne.montant);
+    return Number.isFinite(m) ? m : 0;
+  }
+  const sommeDemande = lignes => lignes.reduce((t, l) => t + centimes(montantDemande(l)), 0) / 100;
+
+  function lireDemande() {
+    const champs = {};
+    [...$('form-demande').elements].forEach(c => {
+      if (!c.name || ['libelle', 'montant', 'evenement'].includes(c.name)) return;
+      champs[c.name] = c.type === 'checkbox' ? c.checked : c.value.trim();
+    });
+    return {
+      champs,
+      depenses: lignesDemande('demande-depenses').filter(l => l.libelle || l.montant),
+      financements: lignesDemande('demande-financements').map((l, i) => ({ libelle: FINANCEMENTS_FSDIE[i], montant: l.montant })),
+      autres: lignesDemande('demande-autres').filter(l => l.libelle || l.montant)
+    };
+  }
+
+  /** Recalcule les totaux et garde le brouillon sur l'appareil. */
+  function majDemande() {
+    const d = lireDemande();
+    const depenses = sommeDemande(d.depenses);
+    const financements = sommeDemande([...d.financements, ...d.autres]);
+    const ecart = centimes(depenses) - centimes(financements);
+    const equilibre = $('demande-equilibre');
+    $('demande-total-depenses').textContent = euros.format(depenses);
+    $('demande-total-financements').textContent = euros.format(financements);
+    equilibre.className = 'equilibre ' + (ecart ? 'ecart' : 'ok');
+    equilibre.textContent = !depenses && !financements ? ''
+      : ecart > 0 ? 'Il manque ' + euros.format(ecart / 100) + ' de financements : les deux totaux doivent être égaux.'
+      : ecart < 0 ? 'Les financements dépassent les dépenses de ' + euros.format(-ecart / 100) + ' : les deux totaux doivent être égaux.'
+      : 'Budget équilibré : les deux totaux sont égaux.';
+    $('btn-ajouter-depense').hidden = $('demande-depenses').children.length >= MAX_DEPENSES;
+    $('btn-ajouter-financement').hidden = $('demande-autres').children.length >= MAX_AUTRES;
+    $('demande-resultat').hidden = true; // le PDF déjà préparé ne correspond plus
+    etat.fichierDemande = null;
+    try { localStorage.setItem(CLE_DEMANDE, JSON.stringify(d)); } catch (e) { /* le brouillon dure alors le temps de la page */ }
+  }
+
+  // ----- Signature tracée au doigt -----
+
+  const CLE_SIGNATURE = 'tresorerie-ascy-signature';
+  /** Cadre « Signature » de la dernière page du PDF, en points. */
+  const CADRE_SIGNATURE = { x: 363, y: 40, width: 173, height: 63 };
+
+  /** La même signature sert à la demande de subvention et au bilan. */
+  const toilesSignature = () => ['demande-signature', 'bilan-signature', 'rapport-signature'].map($);
+
+  function dessinerSignature(image) {
+    toilesSignature().forEach(toile => {
+      if (toile === image) return;
+      const trait = toile.getContext('2d');
+      trait.clearRect(0, 0, toile.width, toile.height);
+      if (image) trait.drawImage(image, 0, 0);
+    });
+  }
+
+  function viderSignature() {
+    dessinerSignature(null);
+    etat.signature = false;
+  }
+
+  /** Le PDF de demande déjà préparé ne porte plus la bonne signature. */
+  function signatureChangee() {
+    etat.fichierDemande = null;
+    etat.fichierRapport = null;
+    $('demande-resultat').hidden = true;
+    $('rapport-resultat').hidden = true;
+  }
+
+  function restaurerSignature(vide) {
+    viderSignature();
+    let image = null;
+    try {
+      if (vide) localStorage.removeItem(CLE_SIGNATURE);
+      else image = localStorage.getItem(CLE_SIGNATURE);
+    } catch (e) { /* pas de signature gardée */ }
+    if (!image || !image.startsWith('data:image/png')) return;
+    const dessin = new Image();
+    dessin.onload = () => {
+      dessinerSignature(dessin);
+      etat.signature = true;
+    };
+    dessin.src = image;
+  }
+
+  function brancherSignature(toile, boutonEffacer) {
+    const trait = toile.getContext('2d');
+    let dernier = null;
+    const point = e => {
+      const r = toile.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * toile.width / r.width, y: (e.clientY - r.top) * toile.height / r.height };
+    };
+    const tracer = e => {
+      const p = point(e);
+      trait.lineWidth = 5;
+      trait.lineCap = trait.lineJoin = 'round';
+      trait.strokeStyle = '#10163a';
+      trait.beginPath();
+      trait.moveTo(dernier.x, dernier.y);
+      trait.lineTo(p.x, p.y);
+      trait.stroke();
+      dernier = p;
+    };
+    toile.onpointerdown = e => {
+      e.preventDefault();
+      toile.setPointerCapture(e.pointerId);
+      dernier = point(e);
+      tracer(e); // un simple appui laisse un point
+    };
+    toile.onpointermove = e => { if (dernier) tracer(e); };
+    toile.onpointerup = toile.onpointercancel = () => {
+      if (!dernier) return;
+      dernier = null;
+      etat.signature = true;
+      try { localStorage.setItem(CLE_SIGNATURE, toile.toDataURL('image/png')); } catch (e) { /* la signature dure alors le temps de la page */ }
+      dessinerSignature(toile); // recopie dans l'autre zone
+      signatureChangee();
+    };
+    boutonEffacer.onclick = () => { restaurerSignature(true); signatureChangee(); };
+  }
+
+  /** La signature sans ses marges vides, pour qu'elle remplisse le cadre du PDF. */
+  function signatureRognee() {
+    if (!etat.signature) return null;
+    const toile = $('demande-signature');
+    const points = toile.getContext('2d').getImageData(0, 0, toile.width, toile.height).data;
+    let gauche = toile.width, haut = toile.height, droite = -1, bas = -1;
+    for (let y = 0; y < toile.height; y++) {
+      for (let x = 0; x < toile.width; x++) {
+        if (!points[(y * toile.width + x) * 4 + 3]) continue;
+        if (x < gauche) gauche = x;
+        if (x > droite) droite = x;
+        if (y < haut) haut = y;
+        if (y > bas) bas = y;
+      }
+    }
+    if (droite < 0) return null;
+    const rognee = el('canvas', { width: droite - gauche + 1, height: bas - haut + 1 });
+    rognee.getContext('2d').drawImage(toile, -gauche, -haut);
+    return rognee.toDataURL('image/png');
+  }
+
+  function restaurerDemande(vide) {
+    if (vide) restaurerSignature(true);
+    let d = null;
+    if (!vide) {
+      try { d = JSON.parse(localStorage.getItem(CLE_DEMANDE)); } catch (e) { /* brouillon illisible : on repart de zéro */ }
+    }
+    if (!d || typeof d !== 'object') d = {};
+    const formulaire = $('form-demande');
+    formulaire.reset();
+    const champs = { assoNom: 'Association sportive de CY Cergy Paris Université', referentNom: etat.moi.nom || '', ...d.champs, dateSignature: aujourdhui() };
+    Object.entries(champs).forEach(([nom, valeur]) => {
+      const c = formulaire.elements[nom];
+      if (!c || !c.name) return;
+      if (c.type === 'checkbox') c.checked = valeur === true;
+      else c.value = valeur;
+    });
+    const lignes = (liste, max) => (Array.isArray(liste) ? liste : []).slice(0, max).map(l => ligneBudget(l || {}));
+    $('demande-financements').replaceChildren(...FINANCEMENTS_FSDIE.map((libelle, i) => ligneBudget({ montant: d.financements?.[i]?.montant }, libelle)));
+    $('demande-depenses').replaceChildren(...lignes(d.depenses, MAX_DEPENSES));
+    while ($('demande-depenses').children.length < 3) $('demande-depenses').append(ligneBudget({}));
+    $('demande-autres').replaceChildren(...lignes(d.autres, MAX_AUTRES));
+  }
+
+  function preparerDemande() {
+    const choix = $('form-demande').elements.evenement;
+    choix.replaceChildren(el('option', { value: '', textContent: 'Aucun' }),
+      ...etat.evenements.map(e => el('option', { value: e.nom, textContent: e.nom })));
+    if (!etat.demandePrete) {
+      etat.demandePrete = true;
+      restaurerDemande();
+    }
+    const jour = aujourdhui();
+    const prochaine = CALENDRIER_CVE.find(([depot]) => depot >= jour);
+    $('demande-echeance').textContent = (prochaine
+      ? 'Prochain dépôt des dossiers : jusqu\'au ' + dateCourte(prochaine[0]) + ', pour la commission du ' + dateCourte(prochaine[1]) + '. ' : '')
+      + 'Le site remplit le formulaire officiel de CY Cergy Paris Université, à envoyer ensuite à vie.asso@cyu.fr.';
+    erreurDemande();
+    majDemande();
+  }
+
+  function choisirEvenementDemande(nom) {
+    const e = etat.evenements.find(x => x.nom === nom);
+    $('demande-prevu').textContent = e
+      ? 'Budget prévu de l\'événement : ' + euros.format(e.depenses) + ' de dépenses et ' + euros.format(e.recettes) + ' de recettes.'
+      : 'Reprend le nom de l\'événement choisi.';
+    if (e) $('form-demande').elements.nomProjet.value = e.nom;
+  }
+
+  function chargerPdfLib() {
+    if (!etat.pdfLib) {
+      etat.pdfLib = chargerScript(PDFLIB_URL, PDFLIB_EMPREINTE)
+        .then(() => window.PDFLib)
+        .catch(() => {
+          etat.pdfLib = null;
+          throw new Error('Impossible de préparer le formulaire. Vérifie ta connexion et réessaie.');
+        });
+    }
+    return etat.pdfLib;
+  }
+
+  /** La police du formulaire ne connaît que le jeu de caractères Windows-1252 : le reste est retiré. */
+  function texteFsdie(valeur, multiligne) {
+    return String(valeur || '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/[\t   ]/g, ' ')
+      .replace(/\n/g, multiligne ? '\n' : ' ')
+      .replace(/[^\n\x20-\x7E¡-ÿ€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ]/g, '');
+  }
+
+  /** Plus grande taille de police, de 11 à 6 points, qui fait tenir le texte dans sa zone. */
+  function tailleFsdie(police, texte, zone, multiligne, max) {
+    for (let taille = Math.min(max || 11, zone.height - 2.5); taille > 6; taille -= 0.5) {
+      if (!multiligne) {
+        if (police.widthOfTextAtSize(texte, taille) <= zone.width - 6) return taille;
+        continue;
+      }
+      let lignes = 0;
+      texte.split('\n').forEach(paragraphe => {
+        let largeur = 0;
+        lignes++;
+        paragraphe.split(' ').forEach(mot => {
+          const l = police.widthOfTextAtSize(mot + ' ', taille);
+          if (largeur && largeur + l > zone.width - 8) { lignes++; largeur = 0; }
+          largeur += l;
+        });
+      });
+      if (lignes * taille * 1.4 <= zone.height - 4) return taille;
+    }
+    return 6;
+  }
+
+  const nombreFsdie = m => (m ? m.toFixed(2).replace('.', ',') : '');
+
+  /** Remplit le PDF officiel avec la demande et renvoie le fichier, toujours modifiable. */
+  /** Ouvre un formulaire PDF du site et prépare l'écriture de ses champs, à une taille qui tient dans la zone. */
+  async function ouvrirFormulairePdf(url) {
+    const { PDFDocument, StandardFonts } = await chargerPdfLib();
+    let octets;
+    try {
+      const reponse = await fetch(url);
+      if (!reponse.ok) throw new Error();
+      octets = await reponse.arrayBuffer();
+    } catch (err) {
+      throw new Error('Impossible de charger le formulaire. Vérifie ta connexion et réessaie.');
+    }
+    const doc = await PDFDocument.load(octets);
+    const police = await doc.embedFont(StandardFonts.Helvetica);
+    const ecrire = (champ, valeur, max) => {
+      const multiligne = champ.isMultiline();
+      const texte = texteFsdie(valeur, multiligne);
+      champ.setFontSize(tailleFsdie(police, texte, champ.acroField.getWidgets()[0].getRectangle(), multiligne, max));
+      champ.setText(texte || undefined);
+    };
+    return { doc, police, form: doc.getForm(), ecrire };
+  }
+
+  /** Pose l'image de la signature au centre d'un cadre de la page, sans la déformer. */
+  async function poserSignature(doc, page, signature, cadre) {
+    if (!signature) return;
+    const image = await doc.embedPng(signature);
+    const echelle = Math.min(cadre.width / image.width, cadre.height / image.height);
+    const largeur = image.width * echelle;
+    const hauteur = image.height * echelle;
+    page.drawImage(image, { x: cadre.x + (cadre.width - largeur) / 2, y: cadre.y + (cadre.height - hauteur) / 2, width: largeur, height: hauteur });
+  }
+
+  async function remplirFormulaireFsdie(d) {
+    const { doc, police, form, ecrire } = await ouvrirFormulairePdf(FORMULAIRE_FSDIE_URL);
+    const budget = doc.getPages()[3];
+    const ecrireBudget = (champ, valeur) => ecrire(champ, valeur, 8.5); // même taille dans toutes les cases du tableau
+    /** Dans le PDF d'origine, toutes les cases « Nature » partagent un seul champ : on en crée une par ligne. */
+    const eclater = (nom, prefixe) => {
+      const champ = form.getTextField(nom);
+      const zones = champ.acroField.getWidgets().map(w => w.getRectangle()).sort((a, b) => b.y - a.y);
+      // form.removeField échoue ici : ces cases n'ont pas d'apparence enregistrée.
+      champ.acroField.Kids().asArray().forEach(ref => budget.node.removeAnnot(ref));
+      form.acroForm.removeField(champ.acroField);
+      return zones.map((zone, i) => {
+        const c = form.createTextField(prefixe + ' ' + (i + 1));
+        c.addToPage(budget, { ...zone, font: police, borderWidth: 0, borderColor: undefined, backgroundColor: undefined });
+        return c;
+      });
+    };
+
+    Object.entries(CHAMPS_FSDIE).forEach(([nom, cle]) => ecrire(form.getTextField(nom), d.champs[cle]));
+    Object.entries(CASES_FSDIE).forEach(([nom, cle]) => { if (d.champs[cle]) form.getCheckBox(nom).check(); });
+    const natures = eclater('Text16', 'Nature dépense');
+    const origines = eclater('Text17', 'Origine financement');
+    d.depenses.slice(0, MAX_DEPENSES).forEach((l, i) => {
+      ecrireBudget(natures[i], l.libelle);
+      ecrireBudget(form.getTextField('total ' + (i + 1)), nombreFsdie(montantDemande(l)));
+    });
+    d.financements.forEach((l, i) => ecrireBudget(form.getTextField('financement ' + (i + 1)), nombreFsdie(montantDemande(l))));
+    d.autres.slice(0, MAX_AUTRES).forEach((l, i) => {
+      ecrireBudget(origines[i], l.libelle);
+      ecrireBudget(form.getTextField('financement ' + (FINANCEMENTS_FSDIE.length + i + 1)), nombreFsdie(montantDemande(l)));
+    });
+    const depenses = sommeDemande(d.depenses);
+    const demande = montantDemande(d.financements[RANG_FSDIE]);
+    ecrireBudget(form.getTextField('total 13'), nombreFsdie(depenses) || '0');
+    ecrireBudget(form.getTextField('total des financements'), nombreFsdie(sommeDemande([...d.financements, ...d.autres])) || '0');
+    ecrire(form.getTextField('Total du budget'), depenses ? euros.format(depenses) : '');
+    ecrire(form.getTextField('Financement CVE'), demande ? euros.format(demande) : '');
+    ecrire(form.getTextField('date'), d.champs.dateSignature ? dateCourte(d.champs.dateSignature) : '');
+    form.updateFieldAppearances(police);
+    await poserSignature(doc, budget, d.signature, CADRE_SIGNATURE);
+    const nom = d.champs.nomProjet.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+    return new File([await doc.save()], 'Demande subvention FSDIE ' + nom + '.pdf', { type: 'application/pdf' });
+  }
+
+  async function remplirDemande(evenement) {
+    evenement.preventDefault();
+    const d = lireDemande();
+    const bouton = $('btn-remplir-demande');
+    erreurDemande();
+    if (!d.champs.nomProjet) { erreurDemande('Indique le nom du projet.'); return; }
+    bouton.disabled = true;
+    bouton.textContent = 'Préparation…';
+    try {
+      d.signature = signatureRognee();
+      $('demande-rappel-signature').textContent = d.signature
+        ? 'Relis le PDF : ta signature est déjà en dernière page.'
+        : 'Relis le PDF, puis signe-le en dernière page.';
+      const fichier = await remplirFormulaireFsdie(d);
+      const depenses = sommeDemande(d.depenses);
+      const egal = centimes(depenses) === centimes(sommeDemande([...d.financements, ...d.autres]));
+      etat.fichierDemande = fichier;
+      $('demande-bilan').textContent = 'Budget de ' + euros.format(depenses) + ', dont ' + euros.format(montantDemande(d.financements[RANG_FSDIE])) + ' demandés à la commission.'
+        + (egal ? '' : ' Attention : le total des dépenses et celui des financements ne sont pas égaux.');
+      $('demande-resultat').hidden = false;
+      $('demande-resultat').scrollIntoView({ block: 'center' });
+    } catch (err) {
+      erreurDemande(err.message);
+    } finally {
+      bouton.disabled = false;
+      bouton.textContent = 'Remplir le formulaire';
+    }
+  }
+
+  function effacerDemande() {
+    if (!confirm('Effacer toutes les informations de la demande ?')) return;
+    try { localStorage.removeItem(CLE_DEMANDE); } catch (e) { /* rien à effacer */ }
+    restaurerDemande(true);
+    choisirEvenementDemande('');
+    erreurDemande();
+    majDemande();
+  }
+
+  // ====== Bilan d'une subvention FSDIE (rapport d'activités et bilan financier) ======
+
+  const BILAN_FSDIE_URL = 'bilan-financier-fsdie.pdf';
+  const CLE_RAPPORT = 'tresorerie-ascy-rapport';
+  /** Lignes imprimées dans le tableau des financements du rapport, et leurs champs dans le PDF. */
+  const FINANCEMENTS_RAPPORT = ['Participation de l\'association', 'Participation des étudiants', 'Subventions / Reliquat (FSDIE / CVEC)', 'Subventions autres'];
+  const CHAMPS_FINANCEMENTS_RAPPORT = ['Montant €Participation de lassociation', 'Montant €Participation des étudiants', 'Montant €Subventions Reliquat FSDIE CVEC', 'Montant €Subventions autres à préciser'];
+  const MAX_DEPENSES_RAPPORT = 11;
+  const MAX_AUTRES_RAPPORT = 5;
+  const CHAMPS_RAPPORT = {
+    'PROJET': 'intitule', 'MONTANT ACCORDE': 'montantAccorde', 'COMMISSION VIE ETUDIANTE DU MOIS DE': 'commission',
+    'DATES DE RÉALISATION DU PROJET': 'dateRealisation', 'LIEUX DE LA MANIFESTATION': 'lieu',
+    'PUBLIC TOUCHÉ étudiantnon étudiant habituéspartenairesprofessionnels 1': 'publicTouche',
+    'donnezvous à votre projet Impressionscommentaires personnels 1': 'analyse',
+    'nom prénom référent': 'referentNom', 'qualité au sein de l\'association': 'referentQualite', 'adresse mail référent': 'referentEmail', 'téléphone référent': 'referentTel'
+  };
+  /** Cadre de signature et place du nom après « Je soussigné(e) », en dernière page du rapport. */
+  const CADRE_SIGNATURE_RAPPORT = { x: 368, y: 443, width: 152, height: 50 };
+  const PLACE_PORTEUR_RAPPORT = { x: 142, y: 596 };
+  const PUBLICS_DEMANDE = [['publicCyu', 'Étudiants CYU'], ['publicExterieurs', 'Étudiants extérieurs'], ['publicTous', 'Tout public'], ['publicAutres', 'Autres']];
+
+  function erreurRapport(message) {
+    $('erreur-rapport').textContent = message || '';
+    $('erreur-rapport').hidden = !message;
+  }
+
+  function lireRapport() {
+    const champs = {};
+    const formulaire = $('form-rapport');
+    [...formulaire.elements].forEach(c => {
+      if (!c.name || ['libelle', 'montant', 'evenement'].includes(c.name)) return;
+      champs[c.name] = c.value.trim();
+    });
+    return {
+      evenement: formulaire.elements.evenement.value,
+      champs,
+      depenses: lignesDemande('rapport-depenses').filter(l => l.libelle || l.montant),
+      financements: lignesDemande('rapport-financements').map((l, i) => ({ libelle: FINANCEMENTS_RAPPORT[i], montant: l.montant })),
+      autres: lignesDemande('rapport-autres').filter(l => l.libelle || l.montant)
+    };
+  }
+
+  function majRapport() {
+    const d = lireRapport();
+    const depenses = sommeDemande(d.depenses);
+    const financements = sommeDemande([...d.financements, ...d.autres]);
+    const ecart = centimes(depenses) - centimes(financements);
+    const equilibre = $('rapport-equilibre');
+    $('rapport-total-depenses').textContent = euros.format(depenses);
+    $('rapport-total-financements').textContent = euros.format(financements);
+    equilibre.className = 'equilibre ' + (ecart ? 'ecart' : 'ok');
+    equilibre.textContent = !depenses && !financements ? ''
+      : ecart > 0 ? 'Il manque ' + euros.format(ecart / 100) + ' de financements pour couvrir les dépenses.'
+      : ecart < 0 ? 'Les financements dépassent les dépenses de ' + euros.format(-ecart / 100) + ' : pense au reliquat à déclarer.'
+      : 'Bilan équilibré : les deux totaux sont égaux.';
+    $('btn-ajouter-depense-rapport').hidden = $('rapport-depenses').children.length >= MAX_DEPENSES_RAPPORT;
+    $('btn-ajouter-financement-rapport').hidden = $('rapport-autres').children.length >= MAX_AUTRES_RAPPORT;
+    $('rapport-resultat').hidden = true; // le PDF déjà préparé ne correspond plus
+    etat.fichierRapport = null;
+    try { localStorage.setItem(CLE_RAPPORT, JSON.stringify(d)); } catch (e) { /* le brouillon dure alors le temps de la page */ }
+  }
+
+  /** Ce que le site sait déjà : les saisies reliées à l'événement et le brouillon de la demande de subvention. */
+  /** Même règle que le script pour le réel : l'événement choisi dans la saisie, sinon le mot-clé dans la description. */
+  function saisiesEvenement(e) {
+    const motCle = String(e.motCle || '').toLowerCase();
+    const liees = etat.saisies.filter(s => (s.evenement
+      ? s.evenement === e.nom
+      : motCle && String(s.description).toLowerCase().includes(motCle)));
+    const parDate = (a, b) => a.date.localeCompare(b.date);
+    return {
+      depenses: liees.filter(s => s.type === 'depense').sort(parDate),
+      recettes: liees.filter(s => s.type === 'recette').sort(parDate)
+    };
+  }
+
+  function remplirChoixRapport() {
+    const choix = $('bilan-evenement');
+    const garde = choix.value;
+    choix.replaceChildren(...(etat.evenements.length
+      ? etat.evenements.map(e => el('option', { value: e.nom, textContent: e.nom + ' · réel : ' + euros.format(e.reel.depenses) + ' de dépenses' }))
+      : [el('option', { value: '', textContent: 'Aucun événement : crée-le d\'abord dans l\'onglet Événements' })]));
+    if (etat.evenements.some(e => e.nom === garde)) choix.value = garde;
+    $('btn-rapport').disabled = !etat.evenements.length;
+  }
+
+  /** Rappelle le bilan financier de l'événement (prévu, réel, écart) au-dessus du rapport. */
+  function afficherResumeRapport(nom) {
+    const zone = $('rapport-resume');
+    const e = etat.evenements.find(x => x.nom === nom);
+    zone.hidden = !e;
+    if (!e) { zone.replaceChildren(); return; }
+    const { depenses, recettes } = saisiesEvenement(e);
+    const somme = liste => liste.reduce((t, s) => t + centimes(s.montant), 0) / 100;
+    const cellule = (texte, classe) => el('span', { className: classe, textContent: texte });
+    const nombre = v => cellule(euros.format(v), 'droite');
+    const resultat = (r, d) => (centimes(r) - centimes(d)) / 100;
+    const ecartSaisies = centimes(somme(depenses)) !== centimes(e.reel.depenses) || centimes(somme(recettes)) !== centimes(e.reel.recettes);
+    zone.replaceChildren(...[
+      el('h4', { textContent: 'Bilan financier de l\'événement' }),
+      el('div', { className: 'budget' },
+        cellule('', 'tete'), cellule('Prévu', 'tete droite'), cellule('Réel', 'tete droite'), cellule('Écart', 'tete droite'),
+        cellule('Recettes', ''), nombre(e.recettes), nombre(e.reel.recettes), nombre(e.reel.recettes - e.recettes),
+        cellule('Dépenses', ''), nombre(e.depenses), nombre(e.reel.depenses), nombre(e.reel.depenses - e.depenses),
+        cellule('Résultat', ''), nombre(resultat(e.recettes, e.depenses)), nombre(resultat(e.reel.recettes, e.reel.depenses)),
+        nombre(resultat(e.reel.recettes, e.reel.depenses) - resultat(e.recettes, e.depenses))),
+      ecartSaisies ? el('p', { className: 'attention', textContent: 'Les saisies chargées ne donnent pas tout à fait ce réel : actualise la page avant de remplir le bilan.' }) : null].filter(Boolean));
+  }
+
+  function rapportDepuisEvenement(nom) {
+    let brouillon = null;
+    try { brouillon = JSON.parse(localStorage.getItem(CLE_DEMANDE)); } catch (e) { /* pas de demande gardée */ }
+    if (!brouillon || typeof brouillon !== 'object') brouillon = {};
+    const demande = brouillon.champs || {};
+    const referent = demande.referentNom || etat.moi.nom || '';
+    const champs = { referentNom: referent, referentQualite: demande.referentQualite || '', referentEmail: demande.referentEmail || '', referentTel: demande.referentTel || '', porteur: referent };
+    const e = etat.evenements.find(x => x.nom === nom);
+    if (!e) return { evenement: '', champs, depenses: [], financements: [], autres: [], source: '' };
+
+    // Le bilan financier de l'événement : ses saisies, choisies avec la même règle que son « réel ».
+    const { depenses, recettes } = saisiesEvenement(e);
+    const somme = liste => liste.reduce((t, s) => t + centimes(s.montant), 0) / 100;
+    const deCategories = categories => somme(recettes.filter(s => categories.includes(s.categorie)));
+    const subvention = deCategories(['Subventions']);
+    const etudiants = deCategories(['Cotisations', 'Événements']);
+    const association = Math.max(0, centimes(e.reel.depenses) - centimes(e.reel.recettes)) / 100; // le reste est payé par l'association
+    const autresCategories = [...new Set(recettes.map(s => s.categorie))].filter(c => !['Subventions', 'Cotisations', 'Événements'].includes(c));
+
+    let lignes = depenses.map(s => ({ libelle: s.description.slice(0, 60), montant: nombreFsdie(Number(s.montant)) }));
+    if (lignes.length > MAX_DEPENSES_RAPPORT) {
+      const reste = depenses.slice(MAX_DEPENSES_RAPPORT - 1);
+      lignes = [...lignes.slice(0, MAX_DEPENSES_RAPPORT - 1),
+        { libelle: 'Autres dépenses (' + reste.length + ' factures, tableau joint)', montant: nombreFsdie(somme(reste)) }];
+    }
+
+    const memeProjet = String(demande.nomProjet || '').trim().toLowerCase() === e.nom.trim().toLowerCase();
+    const demandee = memeProjet && Array.isArray(brouillon.financements) ? montantDemande(brouillon.financements[RANG_FSDIE] || {}) : 0;
+    const publics = PUBLICS_DEMANDE.filter(([cle]) => demande[cle]).map(([, libelle]) => libelle).join(', ');
+    Object.assign(champs, {
+      intitule: e.nom,
+      montantAccorde: nombreFsdie(subvention || demandee),
+      dateRealisation: memeProjet ? demande.dateProjet || '' : '',
+      lieu: memeProjet ? [demande.espaces, demande.adresseExterieure].filter(Boolean).join(' ; ') : '',
+      publicTouche: memeProjet ? publics + (demande.nbPersonnes ? (publics ? ' – ' : '') + demande.nbPersonnes + ' personnes attendues' : '') : ''
+    });
+    const sansJustif = depenses.filter(s => !s.justificatif).length;
+    return {
+      evenement: e.nom,
+      champs,
+      depenses: lignes,
+      financements: [association, etudiants, subvention, 0].map(m => ({ montant: nombreFsdie(m) })),
+      autres: autresCategories.slice(0, MAX_AUTRES_RAPPORT).map(c => ({ libelle: c, montant: nombreFsdie(deCategories([c])) })),
+      source: depenses.length + ' dépense(s) et ' + recettes.length + ' recette(s) reprises du bilan financier de cet événement.'
+        + (memeProjet ? ' Le reste vient de ta demande de subvention.' : ' Aucune demande de subvention gardée pour cet événement : complète le projet à la main.')
+        + (sansJustif ? ' Attention : ' + sansJustif + ' dépense(s) sans justificatif, alors que chaque dépense doit avoir sa facture.' : '')
+    };
+  }
+
+  const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const moisCommission = date => MOIS_FR[Number(date.slice(5, 7)) - 1] + ' ' + date.slice(0, 4);
+
+  /** Les commissions du calendrier CVE ; sans choix gardé, la dernière déjà passée est proposée. */
+  function remplirChoixCommission(valeur) {
+    const choix = $('form-rapport').elements.commission;
+    const options = CALENDRIER_CVE.map(([, commission]) => el('option', {
+      value: moisCommission(commission),
+      textContent: moisCommission(commission) + ' (commission du ' + dateCourte(commission) + ')'
+    }));
+    const passees = CALENDRIER_CVE.filter(([, commission]) => commission <= aujourdhui());
+    const proposee = passees.length ? moisCommission(passees[passees.length - 1][1]) : '';
+    const garde = valeur && !options.some(o => o.value === valeur) ? [el('option', { value: valeur, textContent: valeur })] : [];
+    choix.replaceChildren(el('option', { value: '', textContent: 'Choisir le mois' }), ...garde, ...options);
+    choix.value = valeur || proposee;
+  }
+
+  function afficherRapport(d) {
+    const formulaire = $('form-rapport');
+    formulaire.reset();
+    remplirChoixCommission(d.champs?.commission);
+    Object.entries({ ...d.champs, dateSignature: aujourdhui() }).forEach(([nom, valeur]) => {
+      const c = formulaire.elements[nom];
+      if (c && c.name) c.value = valeur;
+    });
+    formulaire.elements.evenement.value = etat.evenements.some(e => e.nom === d.evenement) ? d.evenement : '';
+    const lignes = (liste, max) => (Array.isArray(liste) ? liste : []).slice(0, max).map(l => ligneBudget(l || {}, null, majRapport));
+    $('rapport-financements').replaceChildren(...FINANCEMENTS_RAPPORT.map((libelle, i) => ligneBudget({ montant: d.financements?.[i]?.montant }, libelle, majRapport)));
+    $('rapport-depenses').replaceChildren(...lignes(d.depenses, MAX_DEPENSES_RAPPORT));
+    while ($('rapport-depenses').children.length < 3) $('rapport-depenses').append(ligneBudget({}, null, majRapport));
+    $('rapport-autres').replaceChildren(...lignes(d.autres, MAX_AUTRES_RAPPORT));
+    $('rapport-source').textContent = d.source || 'Choisir un événement remplace ce qui est saisi ci-dessous.';
+    afficherResumeRapport(formulaire.elements.evenement.value);
+  }
+
+  function preparerRapport() {
+    const choix = $('form-rapport').elements.evenement;
+    const garde = choix.value;
+    choix.replaceChildren(el('option', { value: '', textContent: 'Choisir un événement' }),
+      ...etat.evenements.map(e => el('option', { value: e.nom, textContent: e.nom })));
+    if (!etat.rapportPret) {
+      etat.rapportPret = true;
+      let d = null;
+      try { d = JSON.parse(localStorage.getItem(CLE_RAPPORT)); } catch (e) { /* brouillon illisible : on repart de zéro */ }
+      afficherRapport(d && typeof d === 'object' && d.champs ? d : rapportDepuisEvenement(''));
+    } else if (etat.evenements.some(e => e.nom === garde)) {
+      choix.value = garde;
+    }
+    erreurRapport();
+    majRapport();
+  }
+
+  /** Le texte libre déjà écrit est gardé quand on change d'événement. */
+  function choisirEvenementRapport(nom) {
+    const f = $('form-rapport').elements;
+    const d = rapportDepuisEvenement(nom);
+    Object.assign(d.champs, { analyse: f.analyse.value, commission: f.commission.value });
+    afficherRapport(d);
+  }
+
+  async function remplirBilanFsdie(d) {
+    const { doc, police, form, ecrire } = await ouvrirFormulairePdf(BILAN_FSDIE_URL);
+    // Les noms des champs de ce PDF ont des espaces doubles : on les compare sans en tenir compte.
+    const cle = nom => nom.normalize('NFC').replace(/[’']/g, '\'').replace(/\s+/g, ' ').trim();
+    const champs = new Map(form.getFields().map(c => [cle(c.getName()), c]));
+    const champ = nom => {
+      const c = champs.get(cle(nom));
+      if (!c) throw new Error('Le formulaire de bilan a changé : champ « ' + nom + ' » introuvable.');
+      return c;
+    };
+    const ecrireBudget = (nom, valeur) => ecrire(champ(nom), valeur, 9);
+    const montant = l => nombreFsdie(montantDemande(l));
+    const accorde = montantReleve(d.champs.montantAccorde);
+    const valeurs = { ...d.champs, montantAccorde: Number.isFinite(accorde) && accorde ? euros.format(accorde) : d.champs.montantAccorde };
+
+    Object.entries(CHAMPS_RAPPORT).forEach(([nom, c]) => ecrire(champ(nom), valeurs[c]));
+    d.depenses.slice(0, MAX_DEPENSES_RAPPORT).forEach((l, i) => {
+      ecrireBudget('Nature une ligne une factureRow' + (i + 1), l.libelle);
+      ecrireBudget('Montant €Row' + (i + 1), montant(l));
+    });
+    d.financements.forEach((l, i) => ecrireBudget(CHAMPS_FINANCEMENTS_RAPPORT[i], montant(l)));
+    d.autres.slice(0, MAX_AUTRES_RAPPORT).forEach((l, i) => {
+      ecrireBudget('Subventions autres à préciser Row' + (i + 1), l.libelle);
+      ecrireBudget('Montant €Row' + (i + 5) + '_2', montant(l));
+    });
+    ecrireBudget('0', nombreFsdie(sommeDemande(d.depenses)) || '0');
+    ecrireBudget('0_2', nombreFsdie(sommeDemande([...d.financements, ...d.autres])) || '0');
+    const reliquat = [...champs].find(([nom]) => nom.startsWith('Reliquat'));
+    if (reliquat) ecrire(reliquat[1], montant({ montant: d.champs.reliquat }), 9);
+    ecrire(champ('undefined_2'), d.champs.dateSignature ? dateCourte(d.champs.dateSignature) : '');
+    form.updateFieldAppearances(police);
+
+    const derniere = doc.getPages()[2];
+    const porteur = texteFsdie(d.champs.porteur);
+    if (porteur) derniere.drawText(porteur, { ...PLACE_PORTEUR_RAPPORT, size: 10, font: police });
+    await poserSignature(doc, derniere, d.signature, CADRE_SIGNATURE_RAPPORT);
+    const nom = d.champs.intitule.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+    return new File([await doc.save()], 'Bilan subvention FSDIE ' + nom + '.pdf', { type: 'application/pdf' });
+  }
+
+  async function remplirRapport(evenement) {
+    evenement.preventDefault();
+    const d = lireRapport();
+    const bouton = $('btn-remplir-rapport');
+    erreurRapport();
+    if (!d.champs.intitule) { erreurRapport('Choisis un événement ou indique l\'intitulé du projet.'); return; }
+    bouton.disabled = true;
+    bouton.textContent = 'Préparation…';
+    try {
+      d.signature = signatureRognee();
+      $('rapport-rappel-signature').textContent = d.signature
+        ? 'Relis le PDF : ta signature est déjà en dernière page.'
+        : 'Relis le PDF, puis signe-le en dernière page.';
+      const fichier = await remplirBilanFsdie(d);
+      etat.fichierRapport = fichier;
+      $('rapport-bilan').textContent = euros.format(sommeDemande(d.depenses)) + ' de dépenses et '
+        + euros.format(sommeDemande([...d.financements, ...d.autres])) + ' de financements.'
+        + (d.champs.analyse ? '' : ' L\'analyse du projet est vide.');
+      $('rapport-resultat').hidden = false;
+      $('rapport-resultat').scrollIntoView({ block: 'center' });
+    } catch (err) {
+      erreurRapport(err.message);
+    } finally {
+      bouton.disabled = false;
+      bouton.textContent = 'Remplir le bilan';
+    }
+  }
+
+  function effacerRapport() {
+    if (!confirm('Effacer toutes les informations du bilan ?')) return;
+    try { localStorage.removeItem(CLE_RAPPORT); } catch (e) { /* rien à effacer */ }
+    afficherRapport(rapportDepuisEvenement(''));
+    erreurRapport();
+    majRapport();
+  }
+
   // ====== Administration ======
 
   function changerVue(vue) {
-    ['saisies', 'evenements', 'bilan', 'subventions', 'banque', 'inscrits', 'recurrentes', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
+    ['saisies', 'evenements', 'demande', 'rapport', 'bilan', 'subventions', 'banque', 'inscrits', 'recurrentes', 'acces', 'historique'].forEach(v => { $('vue-' + v).hidden = v !== vue; });
+    const onglet = { demande: 'evenements', rapport: 'bilan' }[vue] || vue; // ces pages s'ouvrent depuis un onglet
     document.querySelectorAll('nav button').forEach(b => {
-      if (b.dataset.vue === vue) b.setAttribute('aria-current', 'page');
+      if (b.dataset.vue === onglet) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
+    if (vue === 'demande' || vue === 'rapport') {
+      if (vue === 'demande') preparerDemande();
+      else preparerRapport();
+      chargerPdfLib().catch(() => {});
+      scrollTo(0, 0);
+    }
     if (vue === 'bilan' || vue === 'subventions') chargerPdf().catch(() => {}); // prêt avant le clic : le partage du téléphone l'exige
     if (vue === 'inscrits') chargerInscrits();
     if (vue === 'recurrentes') preparerRecurrentes();
@@ -2227,13 +3177,50 @@
   $('form-saisie').onsubmit = enregistrer;
   [$('bilan-debut').value, $('bilan-fin').value] = exerciceCourant();
   ['bilan-debut', 'bilan-fin'].forEach(id => { $(id).oninput = afficherBilan; });
-  $('btn-bilan').onclick = () => enregistrerDocument(donneesBilan(), $('btn-bilan'), $('bilan'));
+  $('btn-bilan').onclick = () => {
+    const bilan = donneesBilan();
+    enregistrerDocument(bilan && { ...bilan, signature: signatureRognee() }, $('btn-bilan'), $('bilan'));
+  };
   [$('form-dossier').elements.debut.value, $('form-dossier').elements.fin.value] = exerciceCourant();
   $('form-dossier').oninput = afficherDossier;
   $('form-dossier').onsubmit = e => e.preventDefault();
   $('btn-dossier').onclick = () => enregistrerDocument(donneesDossier(), $('btn-dossier'), $('dossier'));
   $('form-evenement').onsubmit = enregistrerEvenement;
   $('btn-annuler-evenement').onclick = fermerEditionEvenement;
+  $('btn-demande').onclick = () => changerVue('demande');
+  $('btn-retour-demande').onclick = () => changerVue('evenements');
+  $('btn-rapport').onclick = () => {
+    const nom = $('bilan-evenement').value;
+    changerVue('rapport');
+    if (nom) {
+      $('form-rapport').elements.evenement.value = nom;
+      choisirEvenementRapport(nom);
+      majRapport();
+    }
+  };
+  $('btn-retour-rapport').onclick = () => changerVue('bilan');
+  $('btn-effacer-rapport').onclick = effacerRapport;
+  $('btn-ajouter-depense-rapport').onclick = () => { $('rapport-depenses').append(ligneBudget({}, null, majRapport)); majRapport(); };
+  $('btn-ajouter-financement-rapport').onclick = () => { $('rapport-autres').append(ligneBudget({}, null, majRapport)); majRapport(); };
+  $('btn-telecharger-rapport').onclick = () => { if (etat.fichierRapport) livrerFichier(etat.fichierRapport); };
+  $('form-rapport').oninput = e => {
+    if (e.target.name === 'evenement') choisirEvenementRapport(e.target.value);
+    majRapport();
+  };
+  $('form-rapport').onsubmit = remplirRapport;
+  brancherSignature($('rapport-signature'), $('btn-effacer-signature-rapport'));
+  $('btn-effacer-demande').onclick = effacerDemande;
+  $('btn-ajouter-depense').onclick = () => { $('demande-depenses').append(ligneBudget({})); majDemande(); };
+  $('btn-ajouter-financement').onclick = () => { $('demande-autres').append(ligneBudget({})); majDemande(); };
+  $('btn-telecharger-demande').onclick = () => { if (etat.fichierDemande) livrerFichier(etat.fichierDemande); };
+  $('form-demande').oninput = e => {
+    if (e.target.name === 'evenement') choisirEvenementDemande(e.target.value);
+    majDemande();
+  };
+  $('form-demande').onsubmit = remplirDemande;
+  brancherSignature($('demande-signature'), $('btn-effacer-signature'));
+  brancherSignature($('bilan-signature'), $('btn-effacer-signature-bilan'));
+  restaurerSignature();
   $('form-saisie').querySelectorAll('[name=type]').forEach(r => { r.onchange = () => remplirCategories(); });
   ['recherche', 'filtre-type', 'filtre-mois'].forEach(id => { $(id).oninput = afficherListe; });
   $('navigation').onclick = e => { if (e.target.dataset.vue) changerVue(e.target.dataset.vue); };

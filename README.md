@@ -43,6 +43,12 @@ Un guide s'ouvre à la prochaine connexion de chaque personne, une seule fois, a
 
 Chaque heure, `synchroniserCotisations` envoie un seul mail à ceux qui peuvent valider, s'il y a de nouvelles saisies à valider. Cet envoi utilise MailApp : après son ajout, le compte du script doit autoriser l'envoi de mails depuis l'éditeur avant le nouveau déploiement.
 
+## Demande de subvention FSDIE
+
+Dans l'onglet **Événements**, le bouton « Faire une demande de subvention » ouvre une page de saisie (projet, référent, association, logistique, budget). Le site remplit alors `formulaire-subvention-fsdie.pdf`, le formulaire officiel de CY Cergy Paris Université, avec pdf-lib, puis propose de le télécharger ; le PDF reste modifiable et se signe à la main. Tout se passe dans le navigateur : le brouillon est gardé sur l'appareil (`localStorage`), rien n'est envoyé au script. Les dates de dépôt viennent du calendrier CVE 2026-2027 (`CALENDRIER_CVE` dans `index.html`), à mettre à jour chaque année.
+
+Dans l'onglet **Bilan**, le bloc « Bilan d'une subvention FSDIE » (choix de l'événement puis « Faire le bilan d'une subvention ») fait de même avec `bilan-financier-fsdie.pdf` (rapport d'activités et bilan financier). La page affiche le bilan financier de l'événement (prévu, réel, écart) et reprend ses saisies, choisies comme son réel (événement choisi, sinon mot-clé) (une ligne par dépense ; recettes « Subventions » en FSDIE, « Cotisations » et « Événements » en participation des étudiants, les autres catégories en lignes libres ; l'écart est mis en participation de l'association) et, si le brouillon de la demande porte le même nom, ses informations. La signature tracée au doigt est commune à la demande, à ce rapport et à l'onglet Bilan.
+
 ## Dossier de subvention
 
 L'onglet **Subventions** suit l'autorisation Bilan et crée un PDF pour un financeur, à partir des saisies de la période ou d'un événement. Il fonctionne dans le navigateur : les informations saisies ne sont pas enregistrées, et les justificatifs restent à joindre à part.
@@ -75,6 +81,10 @@ L'onglet **Banque**, réservé aux admins, lit un relevé CSV dans le navigateur
 « Accès : Tout le monde » signifie seulement que la page peut joindre le script : chaque action vérifie la session et les droits.
 
 Après toute modification de `Code.gs`, va dans **Déployer → Gérer les déploiements → Modifier → Nouvelle version**. L'URL reste la même.
+
+## Jarvis
+
+L'assistant vocal du PC de l'AS appelle la même API avec la clé `CLE_JARVIS` (Propriétés du script), au lieu d'une session Google. Il a les droits d'un trésorier, sauf les accès et les justificatifs, et signe « Jarvis » dans l'historique. Ses saisies portent l'adresse du compte du script. Sans la propriété `CLE_JARVIS`, il est refusé. Il ne modifie rien sans une confirmation sur le PC.
 
 ## Tests
 
