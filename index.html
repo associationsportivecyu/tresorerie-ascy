@@ -190,6 +190,8 @@
   .equilibre.ecart { color: var(--rouge-clair); }
   #demande-resultat, #rapport-resultat { margin-bottom: 14px; --c: var(--vert); }
   #demande-resultat ul, #rapport-resultat ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
+  .apercu-pdf { display: grid; gap: 10px; max-height: 75vh; overflow-y: auto; padding: 10px; background: rgba(0,0,0,.25); border-radius: 6px; }
+  .apercu-pdf canvas { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
   .evenement h2 { font-size: 15.5px; font-weight: 800; overflow-wrap: anywhere; }
   .budget { display: grid; grid-template-columns: auto repeat(3, 1fr); gap: 4px 10px; margin-top: 9px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
   .budget > * { min-width: 0; }
@@ -422,7 +424,7 @@
         <div class="pied">
           <button type="button" class="secondaire" id="btn-retour-rapport">Retour</button>
           <button type="button" class="secondaire danger" id="btn-effacer-rapport">Tout effacer</button>
-          <button class="principal" id="btn-remplir-rapport">Remplir le bilan</button>
+          <button class="principal" id="btn-remplir-rapport">Voir le bilan rempli</button>
         </div>
       </form>
       <div class="panneau" id="rapport-resultat" aria-live="polite" hidden>
@@ -433,6 +435,7 @@
           <li>Fusionne toutes les factures avec le rapport, en un seul PDF.</li>
           <li>Envoie le tout à vie.asso@cyu.fr.</li>
         </ul>
+        <div class="apercu-pdf" id="rapport-apercu" hidden></div>
         <div class="pied"><button type="button" class="principal" id="btn-telecharger-rapport">Télécharger le bilan</button></div>
       </div>
     </section>
@@ -528,7 +531,7 @@
         <div class="pied">
           <button type="button" class="secondaire" id="btn-retour-demande">Retour</button>
           <button type="button" class="secondaire danger" id="btn-effacer-demande">Tout effacer</button>
-          <button class="principal" id="btn-remplir-demande">Remplir le formulaire</button>
+          <button class="principal" id="btn-remplir-demande">Voir le formulaire rempli</button>
         </div>
       </form>
       <div class="panneau" id="demande-resultat" aria-live="polite" hidden>
@@ -539,6 +542,7 @@
           <li>Joins un devis pour chaque dépense, le RIB et les documents utiles.</li>
           <li>Envoie le tout à vie.asso@cyu.fr.</li>
         </ul>
+        <div class="apercu-pdf" id="demande-apercu" hidden></div>
         <div class="pied"><button type="button" class="principal" id="btn-telecharger-demande">Télécharger le formulaire</button></div>
       </div>
     </section>
@@ -1706,8 +1710,7 @@
     return operations.sort((a, b) => a.date.localeCompare(b.date));
   }
 
-  /** Le texte de chaque page, rangé en lignes de haut en bas, chaque morceau avec sa position. */
-  async function lirePdf(octets) {
+  function chargerPdfJs() {
     if (!etat.pdfjs) {
       etat.pdfjs = chargerScript(PDFJS_URL, PDFJS_EMPREINTE).then(() => {
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
@@ -1715,7 +1718,41 @@
       });
       etat.pdfjs.catch(() => { etat.pdfjs = null; });
     }
-    const doc = await (await etat.pdfjs).getDocument({ data: new Uint8Array(octets) }).promise;
+    return etat.pdfjs;
+  }
+
+  /** Dessine chaque page d'un PDF dans la zone, à sa largeur : l'aperçu marche aussi sur iPhone, où un PDF intégré n'affiche que la première page. */
+  async function apercuPdf(fichier, zone) {
+    const cle = 'apercu-' + zone.id;
+    const tour = (etat[cle] = (etat[cle] || 0) + 1); // un nouveau PDF remplace l'aperçu en cours
+    const miseAJour = !!zone.querySelector('canvas'); // les anciennes pages restent affichées pendant le calcul
+    const defilement = zone.scrollTop;
+    zone.hidden = false;
+    if (!miseAJour) zone.replaceChildren(el('p', { className: 'aide', textContent: 'Préparation de l\'aperçu…' }));
+    try {
+      const pdfjs = await chargerPdfJs();
+      const doc = await pdfjs.getDocument({ data: new Uint8Array(await fichier.arrayBuffer()) }).promise;
+      const pages = [];
+      for (let n = 1; n <= doc.numPages; n++) {
+        const page = await doc.getPage(n);
+        const largeur = Math.max(280, zone.clientWidth || 600);
+        const vue = page.getViewport({ scale: largeur * Math.min(2, devicePixelRatio || 1) / page.getViewport({ scale: 1 }).width });
+        const toile = el('canvas', { width: Math.round(vue.width), height: Math.round(vue.height), ariaLabel: 'Page ' + n + ' sur ' + doc.numPages });
+        toile.setAttribute('role', 'img');
+        await page.render({ canvasContext: toile.getContext('2d'), viewport: vue }).promise;
+        if (tour !== etat[cle]) return;
+        pages.push(toile);
+      }
+      zone.replaceChildren(el('p', { className: 'aide', textContent: 'Aperçu (' + doc.numPages + ' pages), mis à jour pendant que tu remplis la page : vérifie chaque page avant de télécharger.' }), ...pages);
+      zone.scrollTop = miseAJour ? defilement : 0;
+    } catch (err) {
+      if (tour === etat[cle]) zone.replaceChildren(el('p', { className: 'aide', textContent: 'Aperçu impossible sur cet appareil : télécharge le PDF pour le relire.' }));
+    }
+  }
+
+  /** Le texte de chaque page, rangé en lignes de haut en bas, chaque morceau avec sa position. */
+  async function lirePdf(octets) {
+    const doc = await (await chargerPdfJs()).getDocument({ data: new Uint8Array(octets) }).promise;
     const pages = [];
     for (let p = 1; p <= doc.numPages; p++) {
       const parY = {};
@@ -2292,7 +2329,7 @@
       : 'Budget équilibré : les deux totaux sont égaux.';
     $('btn-ajouter-depense').hidden = $('demande-depenses').children.length >= MAX_DEPENSES;
     $('btn-ajouter-financement').hidden = $('demande-autres').children.length >= MAX_AUTRES;
-    $('demande-resultat').hidden = true; // le PDF déjà préparé ne correspond plus
+    planifierApercu('demande'); // le PDF déjà préparé ne correspond plus
     etat.fichierDemande = null;
     try { localStorage.setItem(CLE_DEMANDE, JSON.stringify(d)); } catch (e) { /* le brouillon dure alors le temps de la page */ }
   }
@@ -2322,10 +2359,8 @@
 
   /** Le PDF de demande déjà préparé ne porte plus la bonne signature. */
   function signatureChangee() {
-    etat.fichierDemande = null;
-    etat.fichierRapport = null;
-    $('demande-resultat').hidden = true;
-    $('rapport-resultat').hidden = true;
+    planifierApercu('demande');
+    planifierApercu('rapport');
   }
 
   function restaurerSignature(vide) {
@@ -2568,35 +2603,79 @@
     form.updateFieldAppearances(police);
     await poserSignature(doc, budget, d.signature, CADRE_SIGNATURE);
     const nom = d.champs.nomProjet.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
-    return new File([await doc.save()], 'Demande subvention FSDIE ' + nom + '.pdf', { type: 'application/pdf' });
+    return new File([await doc.save()], ('Demande subvention FSDIE ' + nom).trim() + '.pdf', { type: 'application/pdf' });
+  }
+
+  // ----- Préparation des PDF et aperçu automatique -----
+
+  /** Les deux formulaires officiels : comment lire la page, remplir le PDF et résumer le résultat. */
+  const DOCUMENTS_FSDIE = {
+    demande: {
+      lire: () => lireDemande(),
+      remplir: d => remplirFormulaireFsdie(d),
+      fichier: 'fichierDemande',
+      resume: d => {
+        const depenses = sommeDemande(d.depenses);
+        const egal = centimes(depenses) === centimes(sommeDemande([...d.financements, ...d.autres]));
+        return 'Budget de ' + euros.format(depenses) + ', dont ' + euros.format(montantDemande(d.financements[RANG_FSDIE])) + ' demandés à la commission.'
+          + (egal ? '' : ' Attention : le total des dépenses et celui des financements ne sont pas égaux.');
+      }
+    },
+    rapport: {
+      lire: () => lireRapport(),
+      remplir: d => remplirBilanFsdie(d),
+      fichier: 'fichierRapport',
+      resume: d => euros.format(sommeDemande(d.depenses)) + ' de dépenses et '
+        + euros.format(sommeDemande([...d.financements, ...d.autres])) + ' de financements.'
+        + (d.champs.analyse ? '' : ' L\'analyse du projet est vide.')
+    }
+  };
+
+  /** Remplit le PDF avec ce qui est saisi, l'affiche et le rend téléchargeable. */
+  async function preparerDocument(type, defiler) {
+    const document = DOCUMENTS_FSDIE[type];
+    const tour = (etat['tour-' + type] = (etat['tour-' + type] || 0) + 1);
+    clearTimeout(etat['minuteur-' + type]);
+    const d = document.lire();
+    d.signature = signatureRognee();
+    const fichier = await document.remplir(d);
+    if (tour !== etat['tour-' + type]) return; // une saisie plus récente est déjà en cours de préparation
+    etat[document.fichier] = fichier;
+    $(type + '-rappel-signature').textContent = d.signature
+      ? 'Relis le PDF : ta signature est déjà en dernière page.'
+      : 'Relis le PDF, puis signe-le en dernière page.';
+    $(type + '-bilan').textContent = document.resume(d);
+    $(type + '-resultat').hidden = false;
+    $('btn-telecharger-' + type).disabled = false;
+    if (defiler) $(type + '-resultat').scrollIntoView({ block: 'start' });
+    await apercuPdf(fichier, $(type + '-apercu'));
+  }
+
+  /** Après chaque modification, l'aperçu se refait une fois la saisie arrêtée un instant. */
+  function planifierApercu(type) {
+    etat[DOCUMENTS_FSDIE[type].fichier] = null;
+    $('btn-telecharger-' + type).disabled = true; // rien de périmé ne doit partir en attendant
+    clearTimeout(etat['minuteur-' + type]);
+    etat['minuteur-' + type] = setTimeout(() => {
+      if ($('vue-' + type).hidden) return;
+      preparerDocument(type).catch(() => { /* l'erreur s'affiche au clic sur « Remplir » */ });
+    }, 1200);
   }
 
   async function remplirDemande(evenement) {
     evenement.preventDefault();
-    const d = lireDemande();
     const bouton = $('btn-remplir-demande');
     erreurDemande();
-    if (!d.champs.nomProjet) { erreurDemande('Indique le nom du projet.'); return; }
+    if (!$('form-demande').elements.nomProjet.value.trim()) { erreurDemande('Indique le nom du projet.'); return; }
     bouton.disabled = true;
     bouton.textContent = 'Préparation…';
     try {
-      d.signature = signatureRognee();
-      $('demande-rappel-signature').textContent = d.signature
-        ? 'Relis le PDF : ta signature est déjà en dernière page.'
-        : 'Relis le PDF, puis signe-le en dernière page.';
-      const fichier = await remplirFormulaireFsdie(d);
-      const depenses = sommeDemande(d.depenses);
-      const egal = centimes(depenses) === centimes(sommeDemande([...d.financements, ...d.autres]));
-      etat.fichierDemande = fichier;
-      $('demande-bilan').textContent = 'Budget de ' + euros.format(depenses) + ', dont ' + euros.format(montantDemande(d.financements[RANG_FSDIE])) + ' demandés à la commission.'
-        + (egal ? '' : ' Attention : le total des dépenses et celui des financements ne sont pas égaux.');
-      $('demande-resultat').hidden = false;
-      $('demande-resultat').scrollIntoView({ block: 'center' });
+      await preparerDocument('demande', true);
     } catch (err) {
       erreurDemande(err.message);
     } finally {
       bouton.disabled = false;
-      bouton.textContent = 'Remplir le formulaire';
+      bouton.textContent = 'Voir le formulaire rempli';
     }
   }
 
@@ -2666,7 +2745,7 @@
       : 'Bilan équilibré : les deux totaux sont égaux.';
     $('btn-ajouter-depense-rapport').hidden = $('rapport-depenses').children.length >= MAX_DEPENSES_RAPPORT;
     $('btn-ajouter-financement-rapport').hidden = $('rapport-autres').children.length >= MAX_AUTRES_RAPPORT;
-    $('rapport-resultat').hidden = true; // le PDF déjà préparé ne correspond plus
+    planifierApercu('rapport'); // le PDF déjà préparé ne correspond plus
     etat.fichierRapport = null;
     try { localStorage.setItem(CLE_RAPPORT, JSON.stringify(d)); } catch (e) { /* le brouillon dure alors le temps de la page */ }
   }
@@ -2864,34 +2943,23 @@
     if (porteur) derniere.drawText(porteur, { ...PLACE_PORTEUR_RAPPORT, size: 10, font: police });
     await poserSignature(doc, derniere, d.signature, CADRE_SIGNATURE_RAPPORT);
     const nom = d.champs.intitule.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
-    return new File([await doc.save()], 'Bilan subvention FSDIE ' + nom + '.pdf', { type: 'application/pdf' });
+    return new File([await doc.save()], ('Bilan subvention FSDIE ' + nom).trim() + '.pdf', { type: 'application/pdf' });
   }
 
   async function remplirRapport(evenement) {
     evenement.preventDefault();
-    const d = lireRapport();
     const bouton = $('btn-remplir-rapport');
     erreurRapport();
-    if (!d.champs.intitule) { erreurRapport('Choisis un événement ou indique l\'intitulé du projet.'); return; }
+    if (!$('form-rapport').elements.intitule.value.trim()) { erreurRapport('Choisis un événement ou indique l\'intitulé du projet.'); return; }
     bouton.disabled = true;
     bouton.textContent = 'Préparation…';
     try {
-      d.signature = signatureRognee();
-      $('rapport-rappel-signature').textContent = d.signature
-        ? 'Relis le PDF : ta signature est déjà en dernière page.'
-        : 'Relis le PDF, puis signe-le en dernière page.';
-      const fichier = await remplirBilanFsdie(d);
-      etat.fichierRapport = fichier;
-      $('rapport-bilan').textContent = euros.format(sommeDemande(d.depenses)) + ' de dépenses et '
-        + euros.format(sommeDemande([...d.financements, ...d.autres])) + ' de financements.'
-        + (d.champs.analyse ? '' : ' L\'analyse du projet est vide.');
-      $('rapport-resultat').hidden = false;
-      $('rapport-resultat').scrollIntoView({ block: 'center' });
+      await preparerDocument('rapport', true);
     } catch (err) {
       erreurRapport(err.message);
     } finally {
       bouton.disabled = false;
-      bouton.textContent = 'Remplir le bilan';
+      bouton.textContent = 'Voir le bilan rempli';
     }
   }
 
